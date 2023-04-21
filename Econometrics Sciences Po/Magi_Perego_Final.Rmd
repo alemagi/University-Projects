@@ -1,0 +1,429 @@
+---
+title: "Final Paper - Introduction to Econometrics 56147"
+author: "Magi Alessandro, Alberto Perego"
+date: 
+output: pdf_document
+bibliography: C://Users//magia//OneDrive - Università Commerciale Luigi Bocconi//Econometrics R//Final//Output//bibliography.bib
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = TRUE,
+	message = FALSE,
+	warning = FALSE,
+	cache = TRUE,
+	include = TRUE
+	
+)
+```
+
+```{r, echo = FALSE}
+library(tidyverse)
+library(readxl)
+library(janitor)
+library(stringr)
+library(sf)
+library(tmap)
+library(skimr)
+library(jtools)
+library(huxtable)
+library(knitr)
+library(psych)
+library(haven)
+library(plyr)
+library(htmltools)
+```
+
+\tableofcontents
+\pagebreak
+
+# Introduction and Background
+
+In this paper we are going to investigate the influence of education on tax morality, namely defined as the intrinsic motivation to pay taxes. As a result of the difficulty in finding reliable sources of data on individual actual fiscal evasion, we chose to analyze the European citizens’ attitude towards tax evasion, without considering the act of evasion itself, as it was proven by previous research that there is a negative correlation between the two @Richardson. Furthermore, due to the auto-taxation procedure implemented in most tax systems, we believe that tax morale plays a crucial role for policy makers focusing on fighting fiscal evasion. 
+The practical purpose of our analysis will be to shed light on the causal relationship between education level and tax morality, to possibly advise governments on implementing ad-hoc long term policies to reduce tax evasion. 
+Our inquiry will begin with an individual-level analysis using the data collected from the second round of the European Social Survey, and secondly it will expand its scope taking into consideration national and institutional effects, with the attachment of OECD data on GDP per capita for each country. 
+
+Previous literature on the topic presents ambiguous findings: @Jeyapalan found the relationship to be positive, others on the contrary found a negative effect @Torgler , and a third group found it not statistically significant @Lago or ambiguous @Mcgee.
+In fact, scholar’s opinions and interpretations argue on the fact that more educated individuals are more likely to be aware of the benefits provided by the state, however, they can also be more critical and knowledgeable on tax law, therefore knowing methods to avoid taxes. Thus, it is challenging to make a clear prediction. A study conducted on Malaysian undergraduate students @Jeyapalan, showed that college education has a positive impact on tax morale, especially in females. This paper’s limitations though, including background of the participants and the particularity of the academic course undertaken, make the results hardly generalizable. On the contrary, @Torgler found that more years of education correspond to less tax morality, in all the three European countries they analyzed: Spain, Belgium and Switzerland. In their analysis of all EU countries, @Lago found age, religiosity and trust in politics to have a positive and statistically significant effect on tax morale, while education lacked significance in two out of three regression models, but always had a negative effect. 
+By building a multiple regression model including data from individuals across several European countries, we will be able to assess whether more years of education are associated with a more or less positive attitude towards taxes, and if this relationship is statistically significant. 
+
+
+
+# Methodology
+
+After having cleaned and described the ESS dataset and the variables of interest, firstly we are going to perform a linear regression analysis with ordinary least squares (OLS) estimators, regressing tax morality on years of education, trying to isolate the effect of education through the use of a selected range of control variables. The following multiple linear regression model is going to be estimated: 
+
+\begin{eqnarray}
+\begin{aligned}
+\;Tax\;Morality = &\;\alpha + \beta_1\; Years\;of\;Education + \beta_2\;Gender\;Male + \beta_3\;Trust\;in\;Parliament + 
+\\
+& + \beta_4\;Health\;Services + \beta_5\;Religion + \beta_6\;Ln\;Age + \beta_7\;Income\;Felt:Confortable +
+\\
+& +  \beta_{8}\;Income\;Felt:Sufficient + \beta_{9}\;Income\;Felt:Difficult + \beta_{10}\;Self\;Employment + \varepsilon_{i} 
+\end{aligned}
+\end{eqnarray}
+
+Subsequently, we are going to merge a second dataset from the OECD data on national GDP, in order to account for the institutional and wealth effect of every country. Therefore, in the last regression model estimated, we are going to present the most complete framework for assessing the effect of years of education on tax morality, but always keeping an individual level focus. 
+
+\begin{eqnarray}
+\begin{aligned}
+\;Tax\;Morality = &\;\alpha + \beta_1\; Years\;of\;Education + \beta_2\;Gender\;Male + \beta_3\;Trust\;in\;Parliament + 
+\\
+& + \beta_4\;Health\;Services + \beta_5\;Religion + \beta_6\;Ln\;Age + \beta_7\;Income\;Felt:Confortable +
+\\
+& +  \beta_{8}\;Income\;Felt:Sufficient + \beta_{9}\;Income\;Felt:Difficult + \beta_{10}\;Self\;Employment +
+\\
+& + \beta_{11}\;Std.\;Ln\;GDP + \varepsilon_{i} 
+\end{aligned}
+\end{eqnarray}
+
+In order to obtain more accurate estimates, an overall weight “w1” was created and applied in the regression, to correct both the stratification sampling design at country level (pspwght) and the oversampling of some countries (pweight). In this way individuals are given importance based on the size of their country’s population relative to the entire one, and at the same time sampling error and potential nonresponse biases are minimized.
+
+# Data Description: Part 1
+### Presenting Data
+
+```{r, echo = FALSE, eval = TRUE}
+
+ESS <- read_dta("C:\\Users\\magia\\OneDrive - Università Commerciale Luigi Bocconi\\Econometrics R\\Final\\Datset\\ESS2_withItaly.dta")
+
+ESS_clean = ESS %>%
+  dplyr::rename(employment = emplrel, income_felt = hincfel, years_edu = eduyrs, trust_parliament = trstprl, health_services = stfhlth, religion = rlgdgr, gender = gndr, age = agea, country = cntry, tax_morality  = ctzchtx)
+
+ESS_clean = ESS_clean %>%
+  select(pspwght, pweight, employment, years_edu, income_felt, trust_parliament, health_services, religion, gender, age, country, tax_morality)
+
+```
+
+The dataset chosen for this analysis is the European Social Survey (ESS) Round 2, made by an academically-driven multi-country survey covering over 26 European nations. It involves strict random probability sampling, a minimum target response rate of 70% and rigorous translation protocols. The Second Round has been made between 2004 and 2005 (depends on the country), it counts 49066 observations and includes a section concerning Economic Morality. Given the fact that the dataset is based on a survey, the most important and relevant limitation will be the interviewee’s tendency to lie. More precisely, in this case an individual might be tempted to lie about his tax morality by indicating a more positive attitude than he actually has. The main strength of this dataset is the wide sample size and the rigorous protocol adopted.
+
+Countries: 
+Austria, Belgium, Switzerland, Czech, Germany, Denmark, Estonia, Spain, Finland, France, United Kingdom, Greece, Hungary, Ireland, Iceland, Italy, Luxembourg, Netherlands, Norway, Poland, Portugal, Sweden, Slovenia, Slovakia, Turkey, And Ukraine
+
+```{r , echo = FALSE, eval = FALSE, result='hide'}
+
+
+list(unique(ESS_clean$country))
+
+#"AT" "BE" "CH" "CZ" "DE" "DK" "EE" "ES" "FI" "FR" "GB" "GR" "HU" "IE" "IS" "IT" "LU" "NL" "NO" "PL" "PT" "SE" "SI" "SK" "TR" "UA"
+
+nrow(ESS_clean)
+#49066
+
+
+```
+
+Before starting the data analysis, it should be pointed out that the French Data of the variable “Feeling about household’s income nowadays” as well as the French and Hungarian data for the variable “Employment relation” has been omitted. Table 1 and 2 show, indeed, the country with 100% missing for the two variables mentioned above. In order to compute a more accurate and clean analysis, France and Hungary’s observations have been dropped from the dataset, as well as all the other missing data. As a result, the n.obs of simple and multiple regression will be the same.
+
+```{r descriptive by country, echo = FALSE, eval = TRUE}
+
+income_felt_freq_bycountry <- ESS_clean %>%
+  select(country, income_felt) %>%
+  group_by(country, income_felt) %>%
+  dplyr::summarize(n_obs=n(), 
+                   freq = round(n_obs/sum(n_obs)*100,1)) %>%
+  group_by(country) %>%
+  dplyr::summarize(income_felt = income_felt, 
+                   freq = round(n_obs/sum(n_obs)*100,1)) %>%
+  filter(is.na(income_felt) &
+           freq == 100)
+kable(income_felt_freq_bycountry, 
+      digits = 2, 
+      caption = "Missing Income Felt", 
+      col.names = c("Country", "Income Felt", "Frequency by Country"), 
+      align = 'c')
+
+
+employment_freq_bycountry <- ESS_clean %>%
+  select(country, employment) %>%
+  group_by(country, employment) %>%
+  dplyr::summarize(n_obs=n(), 
+                   freq = round(n_obs/sum(n_obs)*100,1)) %>%
+  group_by(country) %>%
+  dplyr::summarize(employment = employment, 
+                   freq = round(n_obs/sum(n_obs)*100,1)) %>%
+  filter(is.na(employment) &
+           freq == 100)
+kable(employment_freq_bycountry, 
+      digits = 2, 
+      caption = "Missing Employment Type", 
+      col.names = c("Country", "Employment Type", "Frequency by Country"), 
+      align = 'c')
+
+
+#Drop Missing Values
+ESS_clean <- ESS_clean %>%
+  filter( !is.na(employment)&
+            !is.na(years_edu )&
+            !is.na(income_felt)&
+            !is.na(trust_parliament )&
+            !is.na(health_services)&
+            !is.na(religion)&
+            !is.na(gender)&
+            !is.na(age)&
+            !is.na(country )&
+            !is.na(tax_morality))
+
+w1 = ESS_clean$pspwght * ESS_clean$pweight
+
+```
+
+\newpage
+
+### Descriptive Statistics
+
+```{r descriptive stats, echo = FALSE, eval = TRUE}
+
+descriptive_stats <- describe(ESS_clean, fast=TRUE, ranges = TRUE, na.rm=TRUE)
+descriptive_stats <- descriptive_stats %>%
+  filter(!is.na(se))
+
+row.names(descriptive_stats) <- c("pspwght", "pweight", "Employment", "Years of Education", "Income Feeling", "Trust in Parliament", "Health Services", "Religion", "Gender", "Age", "Tax Morality")
+
+kable(descriptive_stats[3:11, 2:7], 
+      digits = 2, 
+      caption = "Descriptive Statistics", 
+      col.names = c("Number of Obs", "Mean", "Standard Deviation", "Min", "Max", "Range"), 
+      align = 'c')
+
+```
+
+### Depedent Variable: Tax Morality
+
+The variable ctzchtx resulting from the question: “How much do you agree or disagree with this statement: Citizens should not cheat on their taxes.” has been chosen as dependent variable in our analysis. There are five possible answers, from 1 to 5, where 1 corresponds to “Agree Strongly” and 5 to “Disagree Strongly”. This makes the interpretation of the variable quite delicate; in fact, a higher value corresponds to a lower level of morality.
+Furthermore, all the “Refusals”, “Don’t Know” and “No Answer” were dropped as missing values. Figure 1 shows the frequency distribution of the variable (NB: missing values already dropped). Table 3 shows the mean and the standard deviation, which are respectively 2.00 and 0.92. Both the frequency table and the histogram confirm what the descriptive statistic data table above displays. 
+As it can be seen in the Table 4, the cumulative frequency of 1 and 2 is more than 80% of the total, confirming the probable response bias of the participants. Perhaps a wider range of responses would have shown a better distribution, and therefore would have allowed us to perform a better analysis.
+
+
+```{r Tax Morality, echo = FALSE, eval = TRUE}
+
+tax_morality_freq <- ESS_clean %>%
+  select(tax_morality) %>%
+  group_by(tax_morality) %>%
+  dplyr::summarize(n_obs=n(), freq = round(n_obs/nrow(ESS_clean)*100,1))
+kable(tax_morality_freq, 
+      digits = 2, 
+      caption = "Tax Morality Frequency Table", 
+      col.names = c("Tax Morality", "N. Obs", "Frequency"), 
+      align = 'c')
+
+```
+
+### Independent Variable: Years of Education
+
+The variable chosen to capture the effect of education is the “Years of full-time education completed”, named eduyrs in the original dataset. The question asked was “About how many years of education have you completed, whether full-time or parttime?”.  There were
+three additional results, corresponding to “Refusal” (77), “Don’t know” (88) and “No answer” (99). All of them have been dropped as missing values. Table 3 shows the range of the answers is equal to 44 with a minimum value of 0 and a maximum of 44. The mean is 11.92 years, with a standard deviation of 3,96. The Boxplot (Figure 1) shows the distribution of the variable, as well as the outliers. Moreover, Table 5 shows the superior outliers found in the Boxplot. Despite the outliers, the variable shows an approximately Normal distribution.
+
+
+```{r Years of Education Outliers, echo = FALSE, eval = TRUE}
+
+years_edu_out <- ESS_clean %>%
+  select(years_edu) %>%
+  group_by(years_edu) %>%
+  dplyr::summarize(n_obs=n(), 
+                   freq = round(n_obs/nrow(ESS_clean)*100,1)) %>%
+  filter(years_edu >= 22)
+kable(years_edu_out, 
+      digits = 2, 
+      caption = "Years of Education Sup. Outliers", 
+      col.names = c("Years of Education", "N. Obs", "Frequency"), 
+      align = 'c')
+
+
+```
+
+
+```{r Graphs, echo = FALSE, eval = TRUE, fig.show='hold', out.width='50%', fig.cap='Tax Morality and Years of Education'}
+
+tax_morality_graph <- ESS_clean %>%
+  ggplot() + 
+  aes(x=tax_morality) + 
+  labs(title = "Tax Morality Histogram", 
+       x= "Tax Morality Value", 
+       y="N. of Observations") + 
+  geom_histogram(binwidth=1, 
+                 colour="red", 
+                 fill="yellow")
+
+years_edu_boxplot <-  ESS_clean %>%
+    ggplot() +
+    aes(x = years_edu) +
+    geom_boxplot(colour = "black",
+                 fill = "#d90502") + 
+  labs(title = "Years of Education Boxplot", 
+       x = "Years of Education")
+
+years_edu_boxplot
+tax_morality_graph
+
+#years_edu_graph <- ESS_clean %>%
+#  filter(years_edu < 28) %>%
+#  ggplot() + 
+#  aes(x=years_edu) + 
+#  labs (title = "Years of Education Histogram", x= "Year of Education", y="N. of Observations") +
+#  geom_histogram(binwidth=1, colour="red", fill="yellow")
+
+```
+
+
+### Control Variables:
+Drawing from the research model of the determinants of tax morale created by @Lago, we decided to include a number of control variables, to isolate as much as possible the effect of education.  As it has been pointed out before, all the missing values have been dropped.
+
+**Gender**:
+Named “gndr” in the original dataset, this is the interviewed’s gender. For the regression this variable has been transformed into a dummy equal to TRUE if the gender is male. 
+
+**Trust in Parliament**:
+Named “trstprl” in the original dataset, it is the result of the question: “Please tell me on a score of 0-10 how much you personally trust your country's parliament. 0 means you do not trust an institution at all, and 10 means you have complete trust.” Refusals, Don't Knows and No Answers have been dropped as missing values
+
+**Health Services**
+Named “stfhlth” in the original dataset, is the result of the question: "Please say what you think overall about the state of health services in your country nowadays?" There are 11 possible answers from 0 (Extremely bad) to 10 (Extremely good). Refusals, Don't Knows and No Answers have been dropped as missing values. This variable has been chosen to represent the satisfaction of the respondent regarding public services in his country or region. 
+
+**Religion**
+Named “rlgdgr” in the original dataset, is the result of the question: “Regardless of whether you belong to a particular religion, how religious would you say you are?”
+NB: the variable does not distinguish between the different religions.
+
+**Age**
+This variable is the age calculated as the difference between the year of birth and the year of interview. In order to obtain a Normal distribution of the variable, it has been decided to apply a logarithmic transformation.
+
+**Income Felt**
+Named “hincfel” in the original dataset, is the result of the question: “Which of the descriptions on this card comes closest to how you feel about your household's income nowadays?”. There are four possible answers: 1 “Living comfortably on present income”, 2 “Coping on present income”, 3 “Difficult on present income”, 4 “Very difficult on present income”. It has then been transformed into four different dummies: Comfortable, Sufficient, Difficult and Very Difficult. The answer “Very Difficult” has been identified as reference category in the regression.
+
+**Type of Employment**
+Named “emplrel ” in the original dataset. It has been asked in which of the following categories they are: 1 “Employee”, 2 “Self-Employed”, 3 “Working for own family business”, 6 “Not applicable”. This variable has been used to divide the dataset into two different groups: “Self-Employed” and “Non Self-Employed”, since in previous research it was highlighted that self-employment has a strong negative effect on tax morality.
+
+```{r Control Variables, echo = FALSE, eval = TRUE, results = 'hide'}
+
+ESS_clean <- ESS_clean %>%
+  mutate(confortable = (income_felt == 1),
+         sufficient = (income_felt == 2), 
+         difficult = (income_felt == 3),
+         very_diff = (income_felt == 4))
+
+#Everything should be not grater than 1
+ESS_check <- ESS_clean %>%
+  dplyr::summarize(sum= confortable + sufficient + difficult + very_diff) %>%
+  filter(sum > 1)
+head(ESS_check)
+
+ESS_clean <- ESS_clean %>%
+  mutate(self_empl = (employment == 2))
+
+ESS_clean <- ESS_clean %>%
+  mutate(gender_male = (gender == 1))
+
+ESS_clean <- ESS_clean %>%
+  mutate(log_age=log(age))
+
+```
+
+
+# Regression Analysis Part 1
+
+The simple regression model shows that, on average, one more year of education is associated with a 0.018 decrease in tax morality level. It is crucial to be careful in interpreting the coefficient according to the scale of measurement explained above; in fact, a positive coefficient actually corresponds to a decrease in the level of tax morality. 
+In order to assess whether there is a causal relationship, we decided to include in the regression model the control variables identified above, due to the observational nature of the data available. The coefficient obtained in the multiple regression model shows that on average, the tax morality level decreases by 0.013 units with a year increase in years of education, keeping all the other variables constant. This means that, in general, more years of education do not help in increasing motivation to pay taxes. On the contrary, the results obtained seem to confirm the theory that educated citizens can be more critical of how the state acts and spends the tax revenues, therefore trying to avoid taxes with more frequency @Lago. 
+The R-squared increases significantly, but remains low also for the multiple regression model, which explains only 3.1% of the total variance of the dependent variable.
+The statistical significance of the coefficient for the main regressor is proved by the P-value, which approximates to zero; this means that the probability of observing a test statistic just as or more extreme than the one obtained in the sample analyzed is almost null, and the alternative hypothesis that education has an influence on tax morality is accepted. 
+The confidence interval (C.I.) computed at 95% level shows that 95% of the times, the true population parameter will be included between the values of 0.010 and 0.016.
+The standard error is 0.001, which means that the standard deviation of the sampling distribution of the sample statistic is very low, and our sample size is satisfactory. 
+
+```{r Regression Analysis Part1, echo = FALSE, eval = TRUE}
+
+
+reg1 <- lm(tax_morality ~ years_edu, ESS_clean, weights = w1)
+reg2 <- lm(tax_morality ~ years_edu + gender_male + trust_parliament + health_services + religion + log_age + confortable + sufficient + difficult + self_empl, ESS_clean, weights = w1)
+
+export_summs(reg1, 
+             reg2, 
+             digits = 3,
+             error_format = "Std = {std.error}, p = {p.value}, CI [{conf.low}, {conf.high}]",
+             error_pos = c("below", "below"),
+             ci_level = 0.95, 
+             align = 'c',
+             model.names = c("Tax Morality", "Tax Morality"), 
+             coefs = c("Constant" = "(Intercept)", "Years of Education" = "years_edu", "Male" = "gender_maleTRUE", "Trust in Parliament" = "trust_parliament", "Health Services" = "health_services", "Religion" = "religion", "Age (Log)" = "log_age", "Income Felt: Confortable" = "confortableTRUE",  "Income Felt: Sufficient" = "sufficientTRUE", "Income Felt: Difficult" = "difficultTRUE", "Self Employment" = "self_emplTRUE"),
+             statistics = c("N. obs." = "nobs", 
+                           "R squared" = "r.squared", 
+                           "R2 adj" = "adj.r.squared"))
+```
+
+\newpage
+
+# Data Description: Part 2
+### Presenting Data
+
+```{r Load Data, echo = FALSE, eval = TRUE, results = 'hide'}
+
+
+GDP_percapita <- read.csv("C:\\Users\\magia\\OneDrive - Università Commerciale Luigi Bocconi\\Econometrics R\\Final\\Datset\\GDP_percapita_onlycurrent.csv")
+GDP_percapita_clean <- GDP_percapita %>%
+  dplyr::rename(country = Country, 
+                GDP = Value) %>%
+  select(country, GDP)
+
+GDP_percapita_clean$country <- revalue(GDP_percapita_clean$country, c("France"="FR", "Austria"="AT", "Belgium"="BE", "Czech Republic"="CZ", "Switzerland"="CH", "Denmark"="DK", "Germany"="DE", "Spain"="ES", "Estonia"="EE", "Finland"="FI", "United Kingdom"="GB", "Greece"="GR", "Hungary"="HU", "Ireland"="IE", "Italy"="IT", "Luxembourg"="LU", "Netherlands"="NL", "Norway"="NO", "Poland"="PL", "Portugal"="PT", "Sweden"="SE", "Slovenia"="SI", "Slovak Republic"="SK", "Turkey"="TR", "Iceland"="IS"))
+ESS_withGDP <- left_join(ESS_clean, GDP_percapita_clean)
+
+```
+
+To conclude our analysis, we are going to attach to every observation the corresponding GDP per capita data taken from the OECD website, which contains official datasets including national statistics. 
+The variable of interest is the Gross Domestic Product per capita, calculated with the expenditure approach at the dollar current prices, and seasonally adjusted. Despite the fact that the survey took place between 2004 and 2005, the GDP data refers to the year 2004.
+Given the distribution of the variable, it was decided to apply a logarithmic transformation before entering it in the final regression model, and it was standardized as well, because of the wide span of the scale of measurement. Unfortunately, as Table 6 shows, the GDP per capita is not available for Ukraine; as a result, to compute the last regression, Ukraine has been dropped from the dataset. NB: Ukraine data are still in the dataset used to do the first two regressions.
+
+
+```{r Describe and Missing, echo = FALSE, eval = TRUE}
+
+ESS_withGDP <- ESS_withGDP %>%
+  mutate(log_GDP = log(GDP))
+
+GDP_missing_bycountry <- ESS_withGDP %>%
+  select(country, GDP) %>%
+  group_by(country) %>%
+  dplyr::summarize(GDP=mean(GDP)) %>%
+  filter(is.na(GDP))
+kable(GDP_missing_bycountry, 
+      digits = 2, 
+      caption = "Missing GDP", 
+      col.names = c("Country", "GDP Value"), 
+      align = 'c')
+```
+
+# Regression Analysis Part 2
+
+In the third regression model built to include the country effect represented by GDP, the influence of education is weaker than in the second model. Indeed, on average, one more year of education is associated with a 0.006 decrease in tax morality level, keeping all the other variables constant. Nevertheless, the effect is still negative and statistically significant, given the p-value approximately equal to zero. The 95% C.I. computed shows that 95% of the times the true population parameter will be between 0.004 and 0.009, proving again that education’s effect on tax morality is rather weak, but still negative. Similarly to the other models, the standard error is very low. The adjusted R-squared of the third model is significantly higher than the second one, reaching a value of 0.062. 
+Considering the other regressors, most of them are statistically significant, with gender, self-employment and GDP having a positive coefficient, and therefore a negative effect on tax morality, while trust in parliament, religion, age and increasing income (setting “very difficult on present income” as reference category) a positive one. These results are consistent with most of previous research findings.
+
+
+```{r Regression Analysis Part2, echo = FALSE, eval = TRUE}
+
+
+reg3 <- lm(tax_morality ~ years_edu + gender_male + trust_parliament + health_services + religion + log_age + confortable + sufficient + difficult + self_empl + scale(log_GDP), ESS_withGDP, weights = w1)
+
+export_summs(reg2, 
+             reg3, 
+             digits = 3,
+             error_format = "Std = {std.error}, p = {p.value}, CI [{conf.low}, {conf.high}]",
+             error_pos = c("below", "below"),
+             ci_level = 0.95, 
+             align = 'c',
+             model.names = c("Tax Morality", "Tax Morality"), 
+             coefs = c("Constant" = "(Intercept)", "Years of Education" = "years_edu", "Male" = "gender_maleTRUE", "Trust in Parliament" = "trust_parliament", "Health Services" = "health_services", "Religion" = "religion", "Age (Log)" = "log_age", "Income Felt: Confortable" = "confortableTRUE",  "Income Felt: Sufficient" = "sufficientTRUE", "Income Felt: Difficult" = "difficultTRUE", "Self Employment" = "self_emplTRUE", "Standard Log GDP" = "scale(log_GDP)"),
+             statistics = c("N. obs." = "nobs", 
+                            "R squared" = "r.squared", 
+                            "R2 adj" = "adj.r.squared"))
+```
+
+
+# Conclusion
+
+The outcome of our analysis seems to confirm the findings of @Torgler for Spain, Belgium and Switzerland, and partially the ones of @Lago, namely that education has a negative impact on tax morality. 
+There are good reasons to believe this causal relationship to be true, although the observational nature of the data does not allow us to verify it with certainty, and the number of variables playing a role in affecting tax morality makes it difficult to draft a comprehensive regression model. Despite the several limitations of our analysis, we believe that the results obtained could provide guidance for new policies aimed at fighting tax evasion. Having assessed that the mere number of years of education does not have a positive impact on tax morality, but instead it decreases it, further research could possibly concentrate on the quality of education and the subjects taught, in order to assess their effect on individual tax morality. 
+
+\newpage
+
+# References
+
+
+https://www.oecd-ilibrary.org/sites/f3d8ea10-en/index.html?itemId=/content/publication/f3d8ea10-en
+
+https://www.europeansocialsurvey.org/about/
+
+

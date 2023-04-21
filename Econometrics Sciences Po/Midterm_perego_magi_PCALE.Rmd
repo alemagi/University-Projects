@@ -1,0 +1,778 @@
+---
+title: "Midterm Project"
+author: "Alberto Perego, Alessandro Magi"
+output: 
+  html_document:
+    df_print: paged
+    highlight: textmate
+    theme: united
+    toc: yes
+    toc_depth: 3
+    toc_float:
+      collapsed: no
+  pdf_document:
+    toc: yes
+    toc_depth: '3'
+editor_options:
+  
+  chunk_output_type: console
+---
+
+```{r setup, include = FALSE, warning = FALSE, message = FALSE}
+options(htmltools.dir.version = FALSE)
+knitr::opts_chunk$set(
+    include = TRUE,
+    message = FALSE,
+    warning = FALSE,
+    cache = TRUE
+)
+```
+
+## Logistics
+
+* ***DEADLINE***: Sunday, March 14th at midnight.
+* You can do this homework in groups of **two at most**.
+* This homework has a total of 20 points. The number of points for each section is clearly indicated in the section and/or subsection headings.
+* You need to hand in this `.Rmd` file  on Moodle and send me the `.html` file - that is produced when you click on the "Knit" button - through Slack. If you are having issues knitting your file do get in touch (and knit regularly to make sure everything is working properly).
+* We left code blocks in this `.Rmd` file for you to fill out. Just put your code within the marked region, and click the *Knit* button in RStudio, just above this script, to see the generated HTML output. You can actually knit it before you add any code to see how nice the output looks like!
+* FYI a code block looks like this:
+```{r}
+# code goes here
+```
+* **Do NOT delete the \`\`\`{r} and \`\`\`**; they separate the code chunk from text.
+* You can find a nice intro to Rmarkdown (`.Rmd`) [here](https://rmarkdown.rstudio.com/authoring_quick_tour.html).
+
+# 2017 French Presidential Elections - Analysis of the First Round Results
+
+This midterm project consists in one long analysis of data from the 1st round of the 2017 French presidential elections.
+
+You will be asked to download the data from its original source, just like you would if you were to undertake this task by yourself. You will use everything we've learned so far: importing (un-tidy) data; tidying, visualising and summarising it; running regressions for different variables; and thinking about whether these associations can be interpreted causally. In the process, you will also learn 2 useful operations: merging 2 (or more) datasets together, and "reshaping" data from wide to long format. Don't worry we will work you through how to do all of this.
+
+I hope you find this project interesting and useful. Now let's get going!
+
+## Loading packages
+
+It's good practice to load all the packages you will need in the same place.
+
+```{r}
+# Load all the packages you need here
+# Don't write the install.packages() code here. Run that code in the console.
+library(tidyverse)
+library(readxl)
+library(janitor)
+library(stringr)
+library(sf)
+library(tmap)
+library(skimr)
+library(jtools)
+library(huxtable)
+```
+
+## Loading the Data [0.5 points]
+
+Download the data from the 1st round of the 2017 French presidential elections from here:
+
+> https://www.data.gouv.fr/s/resources/election-presidentielle-des-23-avril-et-7-mai-2017-resultats-definitifs-du-1er-tour-par-communes/20170427-100544/Presidentielle_2017_Resultats_Communes_Tour_1_c.xls
+
+This is straight from the French Ministry of the Interior which is in charge of collecting electoral data. This dataset contains election results aggregated at the municipality level.
+
+1\. Load it into RStudio in an object called `elections_2017`. Since the file is an Excel spreadsheet (ends in .xls), you need to use the `readxl` package.
+
+To import this file you need to:
+
+* Find out which argument of the `read_excel()` function (which comes from the `c` package) allows you to skip the first 3 rows of the spreadsheet, which do not contain data (you can see that by yourself by opening the file in Excel).
+
+* Specify the argument `guess_max = 35723` to ensure the entire spreadsheet is analysed before the data types of each columns are guessed by `R` (if you do not add this argument the column for departement codes will be numeric and therefore replace character values with `NA`s, which we do not want).
+
+* Add the argument `.name_repair = janitor::make_clean_names`, which requires the `janitor` package, which will make it easier to manipulate the data later on. This argument does what it says: it renames the variables if need be so that every column names are "unique and consist only of the _ character, numbers, and letters."
+
+You can safely ignore the warning message `In is.na(name) : is.na() applied to non-(list or vector) of type 'closure'`.
+
+```{r, echo = TRUE, eval = TRUE}
+#you need to change the path for your own file
+
+path1 = "C:\\Users\\magia\\OneDrive - Università Commerciale Luigi Bocconi\\Econometrics R\\Midterm\\Data_Election.xls"
+elections_2017 = read_excel(path1, skip = 3, guess_max = 35723, .name_repair = janitor::make_clean_names)
+
+
+```
+
+Now that the data is loaded let's get a feel for what it contains
+
+## Understanding what the dataset contains [0.5 points]
+
+1\. Use `head` to display the first 6 rows of the dataset.
+
+```{r, echo = TRUE, eval = TRUE}
+head(elections_2017)
+```
+
+2\. What's the unit of observation?
+#each observation corresponds to a commune, with the data corresponding to the votes for each of it
+3\. How many variables are there?
+
+```{r, echo = TRUE, eval = TRUE}
+ncol(elections_2017)
+#95 variables
+```
+
+4\. How many rows are there?
+
+```{r, echo = TRUE, eval = TRUE}
+nrow(elections_2017)
+#35719 rows (observations)
+```
+
+
+## Cleaning and tidying the data [2.5 points]
+
+1\. All the variable names are in French, so let's rename some relevant variables and give them an English name. Make sure you **rename the variables** and do **not create new variables**. This is important for the rest of the cleaning. Create a new object `elections_2017_clean` for this task.
+
+Rename the following variables as follows: (`old variable name` -> `new variable name`)
+
+1. departement code: `code_du_departement` -> `code_departement`
+1. departement name: `libelle_du_departement` -> `name_departement` 
+1. municipality code: `code_de_la_commune` -> `code_municipality`
+1. municipality name: `libelle_de_la_commune` -> `name_municipality`
+1. number of registered voters: `inscrits` -> `registered`
+1. number of actual votes: `votants` -> `voted`
+
+Pay attention to the second "e" in `departement`.
+
+```{r, echo = TRUE, eval = TRUE}
+
+elections_2017_clean = elections_2017 %>%
+  rename(code_departement = code_du_departement, name_departement = libelle_du_departement, code_municipality = code_de_la_commune, name_municipality = libelle_de_la_commune, registered = inscrits, voted = votants)
+
+
+```
+
+2\. Display the names of the variables to make sure everything was done correctly.
+
+```{r, echo = TRUE, eval = TRUE}
+names(elections_2017_clean)
+```
+
+3\. Create a variable `blank_votes` equal to the sum of `blancs` and `nuls`. The `blancs` variables corresponds to the number of empty ballots while `nuls` reports the number of invalid ballots (e.g. those with writing on them or with the name of someone who is not a candidate, ...). This will be useful to compute the share of votes for each candidates since in France, candidate vote shares are computed as a share of the number of votes minus the number of blank votes.
+
+```{r, echo = TRUE, eval = TRUE}
+
+elections_2017_clean = elections_2017_clean %>%
+  mutate(blank_votes = blancs + nuls)
+
+```
+
+4\. Let's only keep a subset of the variables to make our life easier. Keep only the following variables:
+
+`code_departement`, `name_departement`, `code_municipality`, `name_municipality`, `registered`, `voted`, `blank_votes`, `nom`, `prenom`, `voix`, `nom_2`, `prenom_2`, `voix_2`, `nom_3`, `prenom_3`, `voix_3`, `nom_4`, `prenom_4`, `voix_4`, `nom_5`, `prenom_5`, `voix_5`, `nom_6`, `prenom_6`, `voix_6`, `nom_7`, `prenom_7`, `voix_7`, `nom_8`, `prenom_8`, `voix_8`, `nom_9`, `prenom_9`, `voix_9`, `nom_10`, `prenom_10`, `voix_10`, `nom_11`, `prenom_11`, `voix_11`
+
+To faciliate this selection you can use the following code in the `select()` function:
+
+```{r, echo = TRUE, eval = FALSE}
+
+matches("departement$|municipality$"), registered, voted, blank_votes, matches("^nom|^prenom|^voix")
+
+```
+
+What this code does is it select columns whose names end (hence the `$`s in the first "matches") with `departement` or (hence the `|`) `municipality`, and start with (hence the `^`s in the second "matches") `nom` or `prenom` or `voix`, as well as the `registered`, `voted`, `blank_votes` variables. The `$` and `^` signs in the code are called "regular expressions". You don't need to know more about them but if you're curious, here's a cheatsheet on regular expressions: https://rstudio.com/wp-content/uploads/2016/09/RegExCheatsheet.pdf.
+
+```{r, echo = TRUE, eval = TRUE}
+
+elections_2017_clean = elections_2017_clean %>%
+  select(matches("departement$|municipality$"), registered, voted, blank_votes, matches("^nom|^prenom|^voix"))
+
+```
+
+5\. Again you should display the names of the variables to make sure the selection was done as expected.
+
+```{r, echo = TRUE, eval = TRUE}
+names(elections_2017_clean)
+
+```
+
+6\. Let's create the following variable:
+
+* `pct_voted = voted/registered * 100`
+
+```{r, echo = TRUE, eval = TRUE}
+elections_2017_clean = elections_2017_clean %>%
+  mutate(pct_voted = (voted/registered) * 100 )
+ 
+```
+
+7\. For how many municipalities is `pct_voted` missing? Hint: use a combination of `sum()` and `is.na()`. Remember that in `R`, `sum(TRUE)` = `r sum(TRUE)` and `sum(FALSE)` = `r sum(FALSE)`.
+
+```{r, echo = TRUE, eval = TRUE}
+#First Method
+sum(is.na(elections_2017_clean$pct_voted))
+#1 Missing
+
+#Second Method
+#elections_2017_clean %>%
+#  filter(is.na(pct_voted))%>%
+#  count()
+#1 Missing
+```
+
+8\. Why is the share of voters missing?
+
+```{r, echo = TRUE, eval = TRUE}
+elections_2017_clean %>%
+    filter(is.na(pct_voted)) %>%
+    head()
+
+#The reason why there is the missing is that in that observation both the variables registered and voted are 0. So the output is Missing
+
+```
+
+
+# Analysis of candidates' vote shares
+
+## Some more tidying [3.5 points]
+
+Before we actually perform some analysis on the candidates' vote shares, we need to do some more data tidying.
+
+Notice how inconveniently the data is formatted: each `nom_#`, `prenom_#` and `voix_#` variables correspond to details for the candidate that was ranked `#` in a given municipality.
+For example: in the first row, municipality called "L'Abergement-Clémenciat", `nom_2` is MACRON which means that in that municipality Macron obtained the second highest number of votes. But in the third row, it was MÉLENCHON who arrived second.
+
+We would like to "gather" all these variables into only 4 variables: `rank` (containing the `#` value), `candidate_name` (a combination of `nom_#` and `prenom_#`), and `votes` (`voix_#`). In data parlance we want to "reshape" the data from "wide" format to "long" format.  
+
+1\. To do this we first need to rename the variables `nom`, `prenom` and `voix` to `nom_1`, `prenom_1` and `voix_1`, respectively, to match the pattern of the other such variables. Ensure you are renaming the variables and not creating new ones.
+
+```{r, echo = TRUE, eval = TRUE}
+elections_2017_clean = elections_2017_clean %>%
+  rename(nom_1 = nom, prenom_1 = prenom, voix_1 = voix)
+
+#to check, names(elections_2017_clean)
+```
+
+2\. Now that these variables have been renamed we are going to use the `pivot_longer()` function from the `tidyverse` package to reshape the data. You can find examples of how the `pivot_longer()` function is used by typing `?pivot_longer` in your console.
+
+For our purposes we will use the following 4 arguments in `pivot_longer()`:
+
+* `data = elections_2017_clean` (notice that if you use the `%>%` pipe you don't need to specify the data argument);
+* `cols = matches("^nom|^prenom|^voix")`. These are the columns to be reshaped. We only want to reshape variables starting with `nom`, `prenom` or `voix`;
+* `names_to = c(".value", "rank")`. These are the names of the new columns to be created. The first element of the vector, `".value"`, says that the name of the reshaped variables should be their name before the "_", e.g. all the `nom_#` values will be stored in `nom`. The second element says that the `#` value should be stored in a variable called `rank`;
+* `names_sep = "_"` Tells the function what separates the variable names (`nom`, `voix`, etc.) from the `rank` (1, 2, etc.).
+
+If this is somewhat unclear to you, simply run the code and check how it differs from the previous dataset. This should clear things up.
+
+Create a new object `elections_2017_long` for this task.
+
+```{r, echo = TRUE, eval = TRUE}
+elections_2017_long = elections_2017_clean %>%
+  pivot_longer(cols = matches("^nom|^prenom|^voix"), names_to = c(".value", "rank"), names_sep = "_")
+```
+
+3\. As usual, display the names of the variables to ensure that everything has gone according to plan.
+
+```{r, echo = TRUE, eval = TRUE}
+names(elections_2017_long)
+```
+
+4\. How many rows do you have now?
+
+```{r, echo = TRUE, eval = TRUE}
+nrow(elections_2017_long)
+#392909: a lot more rows than before 
+```
+
+5\. Look at the data. Why do you have so many more observations now?
+
+#we have more observations because now for every municipality, each candidate has its own observation (with votes and rank), while before the candidate's votes and rank were inside the single observation for every municipality
+
+6\. Before we move on to some analysis, rename the new variables to give them an English name.
+
+* number of votes: `voix` -> `votes`
+
+```{r, echo = TRUE, eval = TRUE}
+elections_2017_long = elections_2017_long %>%
+  rename(votes = voix)
+ #check with: names(elections_2017_long)
+```
+
+7\. Create a `candidate_name` variable which combines the `prenom` (first name) and `nom` (last name) variables. You can use the `paste()` function for this, and have as arguments the two variables `prenom` and `nom` (in that order).  
+The paste function works as follows: `paste("a","b", sep = "_")` will return `"a_b"`. Notice that the value given to the `sep` argument will be added between the two values being "pasted" together. Use `" "` as the value for the `sep` argument, this will add a blank space between the candidate's first and last names.
+
+```{r, echo = TRUE, eval = TRUE}
+#First Method
+ #elections_2017_long = elections_2017_long %>%
+ #unite("candidate_name", prenom : nom, sep = " ")
+
+#Second Method
+elections_2017_long = elections_2017_long %>%
+  mutate(candidate_name = paste(prenom, nom, sep=" "))
+
+
+```
+
+8\. Tabulate the new `candidate_name` variable to make sure the candidate names make sense.
+
+```{r, echo = TRUE, eval = TRUE}
+table(elections_2017_long$candidate_name)
+
+```
+
+9\. Let's create a variable containing the percentage of votes obtained by each candidate. (Recall that in France the votes obtained by candidates are calculated as the percentage of votes out of the total number of votes *minus* blank votes.)
+
+* `pct_votes = votes/(voted - blank_votes) * 100`
+
+```{r, echo = TRUE, eval = TRUE}
+elections_2017_long = elections_2017_long %>%
+  mutate(pct_votes = votes / (voted - blank_votes) * 100)
+#to check:
+#names(elections_2017_long)
+#view(elections_2017_long)
+
+```
+
+The last thing we will do in this cleaning section is to filter our data to only keep observations for mainland France.
+
+10\. Tabulate the departement codes in `elections_2017_long`.
+
+```{r, echo = TRUE, eval = TRUE}
+table(elections_2017_long$code_departement)
+
+```
+
+You'll notice that several departement codes start with "Z". These correspond to departements outside of mainland France, known as overseas France, as well as a departement for the French living outside of France ("Français établis hors de France"). You can tabulate the departement names to see this for yourself.
+
+For our purposes we are only interested in analysing mainland French departements, so we will get rid of departements' whose code starts with "Z" as well as Corsica ("2A" and "2B").
+
+11\. To do so you need to use the `str_detect()` function from the `stringr` package in your `filter()` function. Since you want to exclude departement codes containing a "Z" you will need to use `!str_detect()`, the `!` implying that you want to exclude whatever comes after it. Remember to also exclude Corsica departements "2A" and "2B".
+
+Create a new object `elections_2017_long_metrop` for this task.
+
+```{r, echo = TRUE, eval = TRUE}
+elections_2017_long_metrop = elections_2017_long %>%
+  filter(!str_detect(elections_2017_long$code_departement, "Z") & code_departement != "2A" & code_departement != "2B")
+
+```
+
+If your filtering was done properly you should be left with 94 departements even though the highest departement code is 95. (There is no 20 due to Corsica being dropped.)
+
+```{r, echo = TRUE, eval = TRUE}
+table(elections_2017_long_metrop$code_departement)
+length(unique(elections_2017_long_metrop$code_departement))
+#94
+
+```
+
+Ok, great the data is now (finally!) ready to be used for analysis! Yes, everything we did before was just to get the data ready for analysis and get a sense of what it contained. And this is data coming from an official French Ministry!
+
+## Maps [4 points]
+
+Election data are probably better visualized using maps.
+
+In this section we will produce two maps displaying:
+
+1. Macron, Le Pen, Fillon, and Mélenchon's vote percentage in each departement,
+1. The leading candidate in each departement.
+
+Maps are tricky and very complicated objects. But to boil it down to the essential ingredients, you need a "shapefile" which is basically a file that contains the map onto which data will be plotted.
+
+We will download the shapefile for French departements from here:
+
+> https://www.data.gouv.fr/en/datasets/r/3096e551-c68d-40ce-8972-a228c94c0ad1
+
+Unzip the file once it's downloaded.
+
+To produce the maps you will need to install and load the `sf` and `tmap` packages.
+
+1\. Let's first load the file departements-20140306-100m.shp (in the departements-20140306-100m-shp folder you've just downloaded) using the `read_sf()` function as such:
+
+```{r, echo = TRUE, eval = FALSE}
+dep_shfl <- read_sf("path/departements-20140306-100m-shp/departements-20140306-100m.shp")
+# where `path` corresponds to where the shapefile is located
+```
+
+```{r, echo = TRUE, eval = TRUE}
+dep_shfl <- read_sf("C:\\Users\\magia\\OneDrive - Università Commerciale Luigi Bocconi\\Econometrics R\\Midterm\\departements-20140306-100m-shp\\departements-20140306-100m.shp")
+```
+
+2\. Now that you've loaded the shapefile, you want to filter out the following `code_insee` (departement codes) values: "2A","2B","971","972","973","974","976", which correspond to Corsica and departements from overseas France.
+
+```{r, echo = TRUE, eval = TRUE}
+#First Method
+`%!in%` = Negate(`%in%`)
+dep_shfl = dep_shfl %>%
+  filter(code_insee %!in% c("2A","2B","971","972","973","974","976"))
+
+#Second Method
+#dep_shfl = dep_shfl %>%
+#  filter(code_insee != "2A" & code_insee != "2B" & code_insee != "971" & code_insee != "972" & code_insee != "973" & code_insee != "974" & code_insee != "976")
+
+```
+
+3\. Tabulate the departement codes from the `dep_shfl` dataset. Then tabulate the departement codes from the `elections_2017_long_metrop` dataset.
+
+```{r, echo = TRUE, eval = TRUE}
+table(dep_shfl$code_insee)
+#length(unique(dep_shfl$code_insee))
+table(elections_2017_long_metrop$code_departement)
+#length(unique(elections_2017_long_metrop$code_departement))
+
+```
+
+Notice that in `dep_shfl` the departement codes between 1 and 9 have a zero in front of them. So, let's add a "0" in front of departement codes between 1 and 9 in `elections_2017_long_metrop`.
+
+4\. To do so we need to change the `code_departement` variable by using the conditional statement: `ifelse(nchar(code_departement) == 1, paste0("0", code_departement), code_departement)`. What this conditional statement says is: if the number of characters (`nchar`) of the variable `code_departement` is equal to 1, then add a "0" in front of this variable (`paste0()` function); otherwise do nothing. The `paste0()` function concatenates strings together without adding anything between the two strings. Example: `paste0("a","b") = "ab"`. Remember that to create a new variable you need to use the `mutate()` function and you need to name the new variable.
+
+```{r, echo = TRUE, eval = TRUE}
+elections_2017_long_metrop = elections_2017_long_metrop %>%
+  mutate(code_departement = ifelse(nchar(code_departement) == 1, paste0("0", code_departement), code_departement))
+#table(elections_2017_long_metrop$code_departement)
+
+```
+
+5\. Create a new variable `pct_votes_d` containing the percentage of votes received by each candidate by departement. Recall that vote percentage of each candidate = sum of the votes they received / (sum of actual voters - sum of blank votes) * 100.  
+Once that's done, create a variable ranking the vote share of each candidate by departement. You can use the following code: `rank = order(order(pct_votes_d, decreasing = TRUE))`. Lastly, create a variable called `code_insee` equal to `code_departement.` This variable will enable us to merge the data and the departement shapefile. You can pipe all these commands together.
+
+Create a new object called `elections_2017_long_metrop_dep` for this task.
+
+```{r, echo = TRUE, eval = TRUE}
+#First Method
+elections_2017_long_metrop_dep = elections_2017_long_metrop %>%
+  group_by(code_departement, name_departement, candidate_name) %>%
+  summarize(pct_votes_d=(sum(votes)/(sum(voted)-sum(blank_votes)))*100,  .groups = "keep") %>%
+  mutate(code_insee = code_departement) %>%
+  group_by(name_departement) %>%
+  mutate(rank2 = order(order(pct_votes_d, decreasing = TRUE)))
+
+#First Method double check
+#elections_2017_long_metrop_dep = elections_2017_long_metrop %>%
+#  group_by(code_departement, name_departement, candidate_name) %>%
+#  summarize(sum_votes = sum(votes), sum_voted = sum(voted), sum_blank = sum(blank_votes),  .groups = "keep") %>%
+#  mutate(pct_votes_d=(sum_votes/(sum_voted-sum_blank))*100)
+#elections_2017_long_metrop_dep = elections_2017_long_metrop_dep %>%
+#  group_by(name_departement) %>%
+#  mutate(rank = order(order(pct_votes_d, decreasing = TRUE))) %>%
+#  mutate(code_insee = code_departement)
+
+```
+
+6\. Now let's merge `elections_2017_long_metrop_dep` with `dep_shfl` (which contains the "map") using the `left_join()` function from the `tidyverse` package.
+
+This is how `left_join()` works: `left_join(x,y)` will return all rows from `x` (very important!) and all columns from `x` and `y`. Rows in `x` with no match in `y` (based on a "key" variable) will have `NA` values in the new columns. Rows in `y` with no match in `x` will be discarded. You don't need to specify which variable(s) we are merging by (the "key" variable(s)), `left_join()` will automatically detect that `code_insee` is the variable that uniquely identifies each departement.
+
+Don't forget that you need to assign `left_join()` to an object otherwise it will just display the merged dataset in your console but you won't be able to use it. Create a new object called `elections_2017_map` for this task.
+
+The first argument of `left_join()` needs to be `dep_shfl`.
+
+```{r, echo = TRUE, eval = TRUE}
+
+elections_2017_map = left_join(dep_shfl,elections_2017_long_metrop_dep)
+
+```
+
+Congratulations, you have merged your first datasets! Easy right? :)
+
+### Map 1: Candidates' vote percentage
+
+7\. Create a heat map of Macron, Le Pen, Fillon and Mélenchon's percentage of the vote by departement, using the following code (change `eval = FALSE` to `eval = TRUE` just below so that the html file displays the map):
+
+```{r, echo = TRUE, eval = TRUE}
+
+tmap_mode("view") # we want an interactive map
+
+tm_shape(elections_2017_map %>%
+             # only keep Macron, Le Pen, Fillon and Mélenchon
+             filter(candidate_name %in% c("Emmanuel MACRON", "Marine LE PEN", "François FILLON", "Jean-Luc MÉLENCHON"))) +
+    tm_borders(col="white", lwd = 0.3) + # white and thin (line width) borders
+    tm_fill(
+        col = "pct_votes_d",   # variable to be mapped
+        title = "% of votes",   # legend title
+        id = "name_departement",   # information to display when mouse hovers over a departement
+        popup.vars = c("Vote %:" = "pct_votes_d")) + # variable to display in popup window
+    tm_facets(by = "candidate_name") # create one map per selected candidate
+
+
+```
+
+Wasn't that easy (well, sort of ;) ) ! And now you have 4 comparable maps of the vote percentages received by Macron, Le Pen, Fillon and Mélenchon! Hover over the departements with your mouse. The name of the departement will show up. If you click on a departement you will get the vote percentage received by the candidate. Isn't that cool!
+
+Note 24.02.2021: Though the name of the candidates should appear in the top left corner of each map, [due to recent changes](https://github.com/mtennekes/tmap/issues/550) to the `tmap` package, they may not be there. The link says the problem has been fixed but on my end it still doesn't work.
+
+### Map 2: Leading candidate
+
+8\. Create a map displaying the candidate who received the highest percentage of votes in each departement. Try to create this map by yourself using the code above (and the comments in it). You don't need to create any new variables. Don't hesitate to use Google (or your favorite search engine) to help you out. Don't forget to change the title of the legend.
+
+Add the following argument in `tm_fill()` to have a nice color palette for your map:
+```{r, echo = TRUE, eval = FALSE}
+palette = c("#FFD75D","#78BCDF","#DC2A1C","#83726B") # color palette
+```
+
+```{r, echo = TRUE, eval = TRUE}
+tmap_mode("view") # we want an interactive map
+
+tm_shape(elections_2017_map %>%
+             # only keep rank2 == 1 (Leading Candidate) for each department
+             filter(rank2==1)) +
+    tm_borders(col="white", lwd = 0.3) + # white and thin (line width) borders
+    tm_fill(
+        palette = c("#FFD75D","#78BCDF","#DC2A1C","#83726B"), #Add Palette
+        col = "pct_votes_d",   # variable to be mapped
+        title = "% of votes of leading candidate",   # legend title
+        id = "name_departement",   # information to display when mouse hovers over a departement
+        popup.vars = c("Vote %:" = "pct_votes_d")) + # variable to display in popup window
+    tm_facets(by = "candidate_name") # create one map per selected candidate
+
+```
+
+
+## Regression analysis of Le Pen's votes [9 points]
+
+In this last section, we'll attempt a simple regression analysis of Marine Le Pen's vote to better understand its determinants. In case you are unfamiliar with French politics, Marine Le Pen was the candidate for France's far-right party, the National Front (since then renamed National Rally). We will investigate the relationship between her vote percentage at the municipal level and 3 other variables (also at the municipal level):
+
+* income inequality,
+* median income,
+* share of immigrants.
+
+So first we need to import data containing income inequality indicators, median income and immigration shares at the municipality level.
+
+The income inequality/median income data for 2015 can be downloaded here:
+
+> https://insee.fr/fr/statistiques/fichier/3560121/filo-revenu-pauvrete-menage-2015.zip
+
+Download this zip file and open it. It contains a single Excel spreadsheet.
+
+The immigration data for 2015 can be downloaded here:
+
+> https://www.insee.fr/fr/statistiques/fichier/3561125/BTX_TD_IMG1A_2015.zip
+
+Download this zip file and open it. It contains a single Excel spreadsheet.
+
+In France, the [official definition of an immigrant](https://www.insee.fr/en/metadonnees/definition/c1328) is as follows: someone born a foreigner (i.e. not French) outside of France and currently living in France.
+
+1\. Use the `readxl` package to import these Excel spreadsheets in objects called `inc_2015` and `immig_2015` respectively. (Hint: you will need to use the `skip` argument as before.)
+
+```{r, echo = TRUE, eval = TRUE}
+path2 = "C:/Users/magia/OneDrive - Università Commerciale Luigi Bocconi/Econometrics R/Midterm/Income/filo-revenu-pauvrete-menage-2015/base-cc-filosofi-2015.xls"
+inc_2015 = read_excel(path2, skip = 5)
+
+path3 = "C:/Users/magia/OneDrive - Università Commerciale Luigi Bocconi/Econometrics R/Midterm/Immigration/BTX_TD_IMG1A_2015.xls"
+immig_2015 = read_excel(path3, skip = 10)
+
+```
+
+2\. The immigration data is not formatted properly. It needs reshaping and some summarizing. Here's the code that does everything needed (change `eval = FALSE` to `eval = TRUE` so that when you knit the document this code is actually *eval*uated):
+
+```{r, echo = TRUE, eval = TRUE}
+# add "_" just after "AGE" in column names that contain "AGE"
+names(immig_2015)[names(immig_2015) %in% grep("^AGE", names(immig_2015), value = TRUE)] <- paste(
+    substr(grep("^AGE", names(immig_2015), value = TRUE), 1, 3),
+    substr(grep("^AGE", names(immig_2015), value = TRUE), 4, 18), sep = "_")
+
+# print new column names
+names(immig_2015)
+
+immig_2015_clean <- immig_2015 %>%
+    # reshape data to long format
+    pivot_longer(
+        cols = -c("CODGEO","LIBGEO"),
+        names_to = c("age", "age_cat", "immigration_status", "gender"),
+        names_sep = "_",
+        values_to = "n") %>%
+    # group by municipality and immigration status
+    group_by(CODGEO, LIBGEO, immigration_status) %>%
+    # compute total number of individuals
+    summarise(total_people = sum(n)) %>%
+    # reshape to wide format
+    pivot_wider(names_from = immigration_status,
+                values_from = total_people) %>%
+    # compute percentage of immigrants
+    summarise(pct_immigrant = (IMMI1 / (IMMI1 + IMMI2)) * 100)
+
+names(immig_2015_clean)
+```
+
+3\. The `inc_2015` dataset contains lots of variables that do not interest us directly. Only keep the following 3 variables.
+
+* `CODGEO` => municipality code
+* `MED15` => median income (actually to be more specific, it's the median of total household incomes (after taxes) divided by the number of "consumption units", which broadly speaking accounts for household size.)
+* `RD15` => a measure of income inequality equal to the ratio of the income of the top decile to the income of the bottom decile, usually referred to as D9/D1. For example, if D9/D1 equals 3 that means that the poorest person in the top decile (top 10%) earns 3 times more than the richest person in the bottom decile (bottom 10%).
+
+Rename the following variables as follows:
+
+* `MED15` -> `median_income`
+* `RD15` -> `income_inequality`
+
+Create a new object `inc_2015_clean` for this task.
+
+```{r, echo = TRUE, eval = TRUE}
+inc_2015_clean = inc_2015 %>%
+  select(CODGEO, MED15, RD15) %>%
+  rename(median_income = MED15, income_inequality = RD15)
+```
+
+4\. Now we can merge `immig_2015_clean` and `inc_2015_clean` together. We will do so using the `full_join()` function from the `tidyverse` package since some municipalities are included in `immig_2015_clean` but not in `inc_2015_clean`, and vice versa. The `full_join()` function ensures that all municipalities from both datasets are kept even if they are present in only one of the two. You don't need to specify which variable we are merging by, `left_join()` will automatically detect that `CODGEO` is the variable that uniquely identifies each municipality.
+
+Create a new object called `covariates` for this task.
+
+```{r, echo = TRUE, eval = TRUE}
+covariates = full_join(immig_2015_clean,inc_2015_clean)
+```
+
+We now need to merge the `covariates` data with the `elections_2017_long_metrop` data. However, to do that we need to ensure that we have a common "identifier" on which to merge, that is we need to have a variable in both datasets, with the same name, which uniquely identifies each municipality (in our case). We could potentially use the municipality name variables but merging on character variables is generally not good practice as "Paris" and "Paris " or "Paris-Seine" and "Paris Seine" wouldn't merge because they are different even though they most likely refer to the same thing. So we will merge on a variable that combines departement and municipality codes, which is called `CODGEO` in `covariates`.
+
+Notice that in `covariates` the municipality code variable (`CODGEO`) is different from the municipality code in `elections_2017_long_metrop`. This is because in our `covariates` data, the municipality code is a combination of the departement code (the first 2 digits) and the municipality code (the last 3 digits).
+
+Let's create a `CODGEO` variable in `elections_2017_long_metrop` so that it matches the `CODGEO` variable in `covariates`, after which we will be able to merge the two datasets together.
+
+Earlier on we already added a "0" in front of departement codes between 1 and 9. We only need to add a "00" in front of municipality codes between 1 and 9 in `elections_2017_long_metrop`, and a "0"  in front of municipality codes between 10 and 99.
+
+5\. To do so we first need to convert the `code_municipality` variable to a character type using the `as.character()` function. Then we need to change the `code_municipality` variable by using the conditional statement:
+
+```{r, echo = TRUE, eval = FALSE}
+ifelse(nchar(code_municipality) == 1, paste0("00", code_municipality), ifelse(nchar(code_municipality) == 2, paste0("0", code_municipality), code_municipality))
+```
+
+What this conditional statement says is: if the number of characters of the variable `code_municipality` is equal to 1, then add a "00" in front of this variable; if the number of characters of the variable `code_municipality` is equal to 2, then add a "0" in front of this variable; otherwise do nothing.
+
+```{r, echo = TRUE, eval = TRUE}
+elections_2017_long_metrop  = elections_2017_long_metrop %>%
+  mutate(code_municipality = as.character(code_municipality)) %>%
+  mutate(code_municipality = ifelse(nchar(code_municipality) == 1, paste0("00", code_municipality), ifelse(nchar(code_municipality) == 2, paste0("0", code_municipality), code_municipality)))
+
+#table(elections_2017_long_metrop$code_municipality) 
+
+```
+
+6\. Create the variable `CODGEO` which is a combination of `code_departement` and `code_municipality`, in that order. Use the `paste0()` function.
+
+```{r, echo = TRUE, eval = TRUE}
+elections_2017_long_metrop  = elections_2017_long_metrop %>%
+  mutate(CODGEO = paste(code_departement,code_municipality, sep=""))
+
+#table(elections_2017_long_metrop$CODGEO)
+```
+
+7\. Merge `elections_2017_long_metrop` (first argument) and `covariates` together. Use the `left_join()` function from the `tidyverse` package.
+
+Create a new object called `elections_2017_long_metrop_covariates` for this task.
+
+```{r, echo = TRUE, eval = TRUE}
+elections_2017_long_metrop_covariates = left_join(elections_2017_long_metrop,covariates)
+```
+
+8\. Only keep observations for Marine Le Pen.
+
+Create a new object `elections_2017_long_metrop_covariates_lepen` for this task.
+
+```{r, echo = TRUE, eval = TRUE}
+elections_2017_long_metrop_covariates_lepen = elections_2017_long_metrop_covariates %>%
+  filter(candidate_name == "Marine LE PEN")
+```
+
+9\. Use the `skim()` function from the `skimr` package to obtain summary statistics for `median_income`, `income_inequality`, `pct_immigrant` and `pct_votes`.
+
+```{r, echo = TRUE, eval = TRUE}
+elections_2017_long_metrop_covariates_lepen %>%
+  select(median_income, income_inequality, pct_immigrant, pct_votes) %>%
+  skim()
+```
+
+Notice that the number of observations missing for each variable differs significantly. Also notice that there are 6 missing values for the percentage of votes received by Marine Le Pen. This is strange so let's take a look at what's happening.
+
+10\. Why are these values missing? Once you've explained why they are missing, replace those missing values by 0 (as they should be) by using the following ifelse statement: `ifelse(is.na(pct_votes), 0, pct_votes)`.
+
+
+
+```{r, echo = TRUE, eval = TRUE}
+#First we see the missing
+elections_2017_long_metrop_covariates_lepen %>%
+    filter(is.na(pct_votes)) %>%
+    head()
+
+#the missing values are the result of a 0/0 operation; in six municipalities all the votes were blank votes
+
+elections_2017_long_metrop_covariates_lepen = elections_2017_long_metrop_covariates_lepen %>%
+  mutate(pct_votes = ifelse(is.na(pct_votes), 0, pct_votes))
+
+```
+
+To facilitate plotting we will reshape our data in long format.
+
+11\. Re-use `pivot_longer()` to reshape the data appropriately. Here's the code you should run (change `eval = FALSE` to `eval = TRUE` so the code is evaluated when you knit):
+
+```{r, echo = TRUE, eval = TRUE}
+elections_2017_long_metrop_covariates_lepen_long <- elections_2017_long_metrop_covariates_lepen %>%
+    pivot_longer(
+        cols = c("pct_immigrant","median_income","income_inequality"),
+        names_to = "covariates",
+        values_to = "value")
+```
+
+12\. Produce 3 graphs displaying the relationship between the vote percentage for Marine Le Pen and our 3 covariate variables. Make sure that your graph has a meaningful y-axis label and that the y-axis is between 0 and 100.
+(Hint: use the `facet_wrap` layer in `ggplot` to make these 3 plots in the same graph; each plot should be in a row. Look at the `facet_wrap` arguments to ensure that the scales of each plot changes freely.)
+
+```{r, echo = TRUE, eval = TRUE}
+scatter_lepen <- elections_2017_long_metrop_covariates_lepen_long %>%
+    ggplot() +
+    aes(x = value , y= pct_votes) +
+    geom_point() +
+  labs(x = "Value", y = "Percentage of Votes for LePen")+
+  facet_wrap(vars(covariates), ncol = 1, scales="free_x") + 
+  scale_y_continuous(breaks = seq(0, 100, 25))
+scatter_lepen
+
+
+```
+
+13\. Add an OLS regression line on these plots using the `geom_smooth` layer to better see the relationship's sign. Set the argument `method` to `"lm"` and `se` to `FALSE`.
+
+```{r, echo = TRUE, eval = TRUE}
+scatter_reg = scatter_lepen +
+  geom_smooth(method= lm , formula = y ~ x,  se = FALSE)
+scatter_reg
+```
+
+14\. From the graphs, is the relationship between the different covariates and Marine Le Pen's vote share positive or negative? Rather strong or rather weak?
+
+#From the graphs it results that the relationship between LEPEN vote share and the three covariates is always negative and rather weak in all the cases 
+
+15\. Run a simple linear regression of Marine Le Pen's vote percentage on each of our covariate variables separately (i.e. 3 simple linear regressions). For this question you should use `elections_2017_long_metrop_covariates_lepen` as the data source.  
+Use the `export_summs()` function from the `jtools` package to see the results from the three regressions side by side.
+
+```{r, echo = TRUE, eval = TRUE}
+
+immreg = lm(pct_votes ~ pct_immigrant, elections_2017_long_metrop_covariates_lepen)
+
+incomereg = lm(pct_votes ~ median_income, elections_2017_long_metrop_covariates_lepen)
+
+ineqreg = lm(pct_votes ~ income_inequality, elections_2017_long_metrop_covariates_lepen)
+
+export_summs(immreg, incomereg, ineqreg,
+            model.names = c("Immigrant", "Median of Income", "Income Inequality"))
+
+
+```
+
+Don't pay attention to the stars next to the coefficients and to the number in parenthesis below the coefficients, we'll get to them later on in the course.
+
+16\. What is the interpretation of the coefficients for `median_income`, `income_inequality` and `pct_immigrant`? Be precise.
+
+#for median income, the coefficient is equal to -0.0005; this means that when the median income level increases by 1 unit, the % of votes for LEPEN decrease on average by 0.0005
+#for income inequality, the coefficient is equal to -3.522; this means that when the income inequality level increases by one unit, the % of votes for LEPEN decreases on average by 3.522
+#for the percentage of immigrants, the coefficient is equal to -0.4248; this means that when the percentage of immigrants increases by one unit, the % of votes for LEPEN decreases on average by 0.42
+
+17\. Why is the coefficient for median income so small?
+
+#the scale for median income is very large compared to the other covariates (as can be seen in the scatter plot), for this reason an increase of just one unit influences very little the percentage of votes
+
+18\. Why does the number of observations vary for each regression?
+
+#because of the missing values in each covariate, which are excluded from the regression. In the income inequality covariate we have a lot of missing values compared to the other two. 
+
+19\. Comment on the $R^2$ of the three regressions. Which regressor explains more of the variance in Marine Le Pen's vote?
+
+#income inequality is the regressor which explains most of the variance of the votes. 0.05% of the variance of Y is explained by income inequality. All the three R^2 are small, but this does not mean that there can not be causality 
+
+20\. Can you interpret these estimates causally? Why not? How would you go about trying to assess whether income inequality at the municipality level has a causal impact on the vote percentage for Marine Le Pen?
+
+#In a simple linear model, the coefficient cannot be interpreted as a causal effect unless all the other factors affecting Y are uncorrelated with the different covariates. There could be underlying factors which influence the model and we can't control. In this real world example there is no randomization of the process, therefore there can be biases that affect the results. Differently from experimental data, these estimates can't be interpreted causally
+
+
+And that's it for this midterm! I hope you had fun, or at least *some* fun, doing it and that you improved your `R` skills. I also hope you got a sense of what "real" data looks like and how it can be tamed by using the great tools that `R` provides.
+
+<div class="tocify-extend-page" data-unique="tocify-extend-page" style="height: 0;"></div>
