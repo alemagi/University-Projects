@@ -1,0 +1,156 @@
+---
+title: "Assignment 4 - Time Series"
+author: "Attolini Maria Carmela, Magi Alessandro"
+date: 
+header-includes:
+output: pdf_document
+
+
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = TRUE,
+	message = FALSE,
+	warning = FALSE,
+	cache = TRUE,
+	include = TRUE
+	
+)
+```
+
+```{r Libraries, echo = FALSE}
+library(readxl)
+library(janitor)
+library(stringr)
+library(knitr)
+library(tinytex)
+library(depmixS4)
+library(xts)
+library(zoo)
+library(psych)
+library(lubridate)
+library(dlm)
+library(tidyverse)
+```
+
+
+# Exercise 2
+
+The dataset Nile, available in R, provides the measurements of the annual flow of the river Nile at Ashwan,
+for the period 1871-1970.
+
+## Point 1 
+
+```{r Nile Dataset and Plot, echo = FALSE, eval = TRUE, out.width='70%', fig.show='hold', fig.align='center', fig.cap='Level of the Nile Over Time'}
+
+niledf <- data.frame(nile=as.matrix(Nile), year=time(Nile))
+
+nile_graph <- niledf %>%
+  ggplot() + 
+  aes(y=nile,
+      x=year) + 
+  labs(x = "Time",
+       y = "Level of Nile") +
+  geom_line() +
+  theme_minimal()
+
+nile_graph
+
+```
+
+
+```{r Estimating Model, echo = FALSE, eval = TRUE}
+
+buildrw <- function(parameters){
+    dlmModPoly(order=1, dV=parameters[1], dW=parameters[2], m0=Nile[1])}
+
+outMLE <- dlmMLE(Nile, rep(100, 2), buildrw, lower=c(0.000001, 0), hessian=TRUE)   
+
+# Estimating Standard Errors
+AsymCov <- solve(outMLE$hessian) 
+MLEse <- sqrt(diag(AsymCov))  
+
+rw <- buildrw(outMLE$par)
+outFilt <- dlmFilter(Nile,rw)
+
+kable(data.frame(c(outMLE$par[1],MLEse[1]),
+                c(outMLE$par[2],MLEse[2]),
+                row.names = c("$Value$", "$se$")), 
+      digits = 2, 
+      caption = "MLE Optimal Estimators and SE", 
+      col.names = c("$V$","$W$"), 
+      align = 'c')
+
+
+
+```
+
+\newpage
+
+##  Point 2
+
+After having estimated the variances for the measurement error $\sigma^2_v$ and the variance for the evolution error $\sigma^2_w$ through MLEs (Table 1), we plug them in the model as if they were "known" parameters. 
+
+\begin{eqnarray*} 
+Y_t &= \theta_t + v_t \quad    & v_t \overset{i.i.d.}\sim N(0, 15098.70)\\
+\theta_t &= \theta_{t-1} + w_t \quad   & v_t \overset{i.i.d.}\sim N(0,1469.02)
+\end{eqnarray*}
+
+```{r Fitted and Std. Dev., echo = FALSE, eval = TRUE, out.width='60%', fig.show='hold', fig.cap='Graphs Point 1', fig.align='center'}
+
+#Adding fitted to dataframe
+niledf <- niledf %>%
+  mutate(fitted = dropFirst(outFilt$m))
+
+#This is the standard deviation
+listC <- dlmSvd2var(outFilt$U.C, outFilt$D.C)
+sqrtC <- sqrt(unlist(listC))
+
+#Adding standard dev to dataframe
+niledf <- niledf %>%
+  mutate(stdev = dropFirst(sqrtC))
+
+#Adding credible interval
+niledf <- niledf %>%
+  mutate(lower = fitted + qnorm(0.10, sd=stdev),
+         upper = fitted + qnorm(0.90, sd=stdev))
+
+
+graph_fitted <- niledf %>%
+  ggplot() + 
+  aes( x = year,
+       y = fitted) + 
+  labs(title= "A: Filtering States Estimates",
+       x= "Time") +
+  ylab("") +
+  geom_point() +
+  geom_line(show.legend = FALSE) +
+  theme_minimal() +
+  geom_ribbon(aes(ymin=niledf$lower,
+                  ymax=niledf$upper),
+              linetype=2, 
+              alpha=0.1)
+
+graph_fitted
+
+
+```
+
+## Point 3
+
+
+```{r Graphs, echo = FALSE, eval = TRUE, out.width='60%', fig.show='hold', fig.cap='Graphs Point 3', fig.align='center'}
+
+qqnorm(residuals(outFilt, sd=FALSE))
+qqline(residuals(outFilt, sd=FALSE))
+tsdiag(outFilt)
+
+```
+
+We are dealing with a univariate time series, hence the sequence of standardized innovation $\Tilde{e_1}$,...,$\Tilde{e_t}$, if the model is correct, should be a Gaussian white noise. Several statistical tests can be carried out on the standardized forecast errors to check if the model is correct. Specifically, they are divided into: 
+\begin{enumerate}
+    \item [1.] tests to check if $\Tilde{e_t}$'s distribution is a Gaussian standard normal
+    \item[2.] tests to check if the standardized innovation are correlated or not.
+\end{enumerate}
+In an easier way, however, we can plot the standardized forecasts errors and implement a visual analysis.

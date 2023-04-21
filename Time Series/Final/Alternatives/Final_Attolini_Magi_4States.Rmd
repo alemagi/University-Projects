@@ -1,0 +1,733 @@
+---
+title: "Final Assignment - Time Series"
+author: "Attolini Maria Carmela, Magi Alessandro"
+date: 
+output: pdf_document
+geometry: margin = 0.3in
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = TRUE,
+	message = FALSE,
+	warning = FALSE,
+	cache = TRUE,
+	include = TRUE
+)
+```
+
+```{r Libraries, echo = FALSE}
+library(tidyverse)
+library(readxl)
+library(janitor)
+library(stringr)
+library(knitr)
+library(tinytex)
+library(depmixS4)
+library(xts)
+library(zoo)
+library(psych)
+library(lubridate)
+```
+
+We are working with space-temporal data from the U.S. Environmental Protection Agency (EPS). The dataset displays hourly air quality data measured in 10 different stations in California from June to September 2020. In particular, we have decided to focus and analyze the data of station 55 (station_id 55). 
+
+
+```{r Importing Data, echo=FALSE}
+path <- "C:\\Users\\magia\\OneDrive - Università Commerciale Luigi Bocconi\\AA Second Semester\\Time Series\\Time Series Magi-Attolini\\Final\\ts_epa_2020_west_sept_fill.csv"
+dataset <- read_csv(path, col_types = cols(temp = col_double(), wind = col_double()))
+
+#Here we exctract only id_95 station
+id_95 <- dataset %>%
+  filter(station_id==55)
+
+```
+
+# Plots and Descriptive Stats
+
+```{r Work the Dataset, echo=FALSE}
+
+
+#Here I create long dataset to wrap plot
+id_95_long <- id_95 %>%
+  dplyr::select(datetime, pm25, temp, wind) %>%
+  pivot_longer(cols=c("pm25", "temp", "wind"), names_to = "type")
+
+#Here I collapse by day
+id_95_coll <- id_95 %>%
+  mutate(date=as.Date(datetime), time=format(datetime, "%H:%M:%S")) %>%
+  group_by(date) %>%
+  summarize(station_id=mean(station_id), pm25=mean(pm25), temp=mean(temp), wind=mean(wind))
+
+#Same for collapsed
+id_95_coll_long <- id_95_coll %>%
+  dplyr::select(date, pm25, temp, wind) %>%
+  pivot_longer(cols=c("pm25", "temp", "wind"), names_to = "type")
+
+#Half of the day
+id_95_half <- id_95 %>%
+  mutate(date=as.Date(datetime), 
+         first_half= ifelse(hour(datetime) < 12 & hour(datetime) >=0, 1, 0)) %>%
+  group_by(date, first_half) %>%
+  summarize(station_id=mean(station_id), pm25=mean(pm25), temp=mean(temp), wind=mean(wind), .groups = "drop")
+
+id_95_half <- id_95_half %>%
+  mutate(time=ifelse(first_half==1, "11:59:99","23:59:99"),
+         datetime=as.POSIXct(paste(date, time), "%Y-%m-%d %H:%M:%S"))
+
+#Same for collapsed
+id_95_half_long <- id_95_half %>%
+  dplyr::select(datetime, pm25, temp, wind) %>%
+  pivot_longer(cols=c("pm25", "temp", "wind"), names_to = "type")
+      
+
+```
+
+
+```{r Descriptive Stats, echo = FALSE, eval = TRUE}
+
+#Little check to verify 0 missing values
+missing_pm <- id_95 %>%
+  filter(is.na(pm25)) %>%
+  count()
+
+missing_temp <- id_95 %>%
+  filter(is.na(temp)) %>%
+  count()
+
+missing_wind <- id_95 %>%
+  filter(is.na(wind)) %>%
+  count()
+
+#Constructiv Descriptive Statistics Table
+descriptive_stats <- id_95 %>%
+  dplyr::select(pm25, temp, wind)
+
+descriptive_stats <- describe(descriptive_stats, fast=TRUE, ranges = TRUE, na.rm=TRUE)
+descriptive_stats <- descriptive_stats[, 2:7]
+row.names(descriptive_stats) <- c("PM2.5", "Temperature", "Wind")
+
+kable(descriptive_stats, 
+      digits = 2, 
+      caption = "Descriptive Statistics (Hourly Data)", 
+      col.names = c("Number of Obs", "Mean", "Standard Deviation", "Min", "Max", "Range"), 
+      align = 'c')
+
+#How many times pm25 pass the threshold?
+
+id_95_freq <- id_95 %>%
+  dplyr::select(pm25) %>%
+  mutate(pass= ifelse(pm25 >= 25, 1, 0)) %>%
+  dplyr::summarize(n_obs=n(), n_pass= sum(pass), freq = round(n_pass/n_obs*100,2))
+
+id_95_freq[,3] <- paste0(id_95_freq[1,3],"%")
+
+#id_95_freq <- id_95 %>%
+#  dplyr::select(pm25) %>%
+#  filter(pm25 >= 25) %>%
+#  dplyr::summarize(n_obs= n(), freq = round(n_obs/nrow(id_95)*100,2))
+
+kable(id_95_freq, 
+      digits = 2, 
+      caption = "PM2.5 Frequency of Passing Threshold (Hourly Data)", 
+      col.names = c("N. Obs", "N. Pass", "Frequency"), 
+      align = 'c')
+
+```
+
+
+```{r Hourly Graph, echo=FALSE, eval = TRUE, out.width='50%', fig.show='hold', fig.cap='Time Series by Hour at Station 55'}
+
+id_95_graph <- id_95 %>%
+  ggplot() +
+  aes(x=datetime,
+      y=pm25) +
+  labs(title= "A: PM2.5 Level Over Time",
+       x= "",
+       y= "") + 
+  geom_line() + 
+  annotate(geom="rect", 
+           xmax=max(id_95$datetime), 
+           ymin=25,
+           xmin=min(id_95$datetime),
+           ymax=max(id_95$pm25), 
+           fill="darkred",
+           alpha=0.2) +
+  annotate(geom="text", 
+           x=as.POSIXct("2020-06-25 23:00:00 UTC"), 
+           y=max(id_95$pm25)-25, 
+           label="Dangerous PM2.5 level", 
+           color="darkred") +
+  theme_minimal()
+
+labels_facet <- c(
+                    `pm25` = "PM2.5",
+                    `temp` = "Temperature",
+                    `wind` = "Wind"
+                    )
+
+graph_id_95_long <- id_95_long %>%
+  ggplot() + 
+  aes( x = datetime,
+       y = value,
+       color = type) + 
+  labs(title= "B: Comparison Between PM25, Temperature and Wind Over Time",
+       x= "") +
+  ylab("") +
+  geom_line(show.legend = FALSE) +
+  facet_wrap(~ type, ncol = 1, scale="free_y", labeller = as_labeller(labels_facet))+ 
+  theme_minimal()
+
+id_95_graph
+graph_id_95_long
+
+```
+
+```{r Half Day Graph, echo=FALSE, eval = TRUE, out.width='50%', fig.show='hold', fig.cap='Time Series Mean Over Half-Day at Station 55'}
+
+id_95_half_graph <- id_95_half %>%
+  ggplot() +
+  aes(x=datetime,
+      y=pm25) +
+  labs(title= "A: PM2.5 Level Over Time",
+       x= "",
+       y= "") + 
+  geom_line() + 
+  annotate(geom="rect", 
+           xmax=max(id_95_half$datetime), 
+           ymin=25,
+           xmin=min(id_95_half$datetime),
+           ymax=max(id_95_half$pm25), 
+           fill="darkred",
+           alpha=0.2) +
+  annotate(geom="text", 
+           x=as.POSIXct("2020-06-25 23:00:00 UTC"), 
+           y=max(id_95_half$pm25)-25, 
+           label="Dangerous PM2.5 level", 
+           color="darkred") +
+  theme_minimal()
+
+
+
+graph_id_95_half_long <- id_95_half_long %>%
+  ggplot() + 
+  aes( x = datetime,
+       y = value,
+       color = type) + 
+  labs(title= "B: Comparison Between PM25, Temperature and Wind Over Time",
+       x= "") +
+  ylab("") +
+  geom_line(show.legend = FALSE) +
+  facet_wrap(~ type, ncol = 1, scale="free_y", labeller = as_labeller(labels_facet))+ 
+  theme_minimal()
+
+id_95_half_graph
+graph_id_95_half_long
+
+```
+
+```{r Collapsed Graphs, echo=FALSE, eval = TRUE, out.width='50%', fig.show='hold', fig.cap='Time Series Mean Over Day at Station 55'}
+
+
+id_95_coll_graph <- id_95_coll %>%
+  ggplot() +
+  aes(x=date,
+      y=pm25) +
+  labs(title= "A: PM2.5 Level Over Time",
+       x= "",
+       y= "") + 
+  geom_line() + 
+  annotate(geom="rect", 
+           xmax=max(id_95_coll$date), 
+           ymin=25,xmin=min(id_95_coll$date),
+           ymax=max(id_95_coll$pm25), 
+           fill="darkred",
+           alpha=0.2) +
+  annotate(geom="text", 
+           x=as.Date("2020-06-25"), 
+           y=max(id_95_coll$pm25)-10, 
+           label="Dangerous PM2.5 level", 
+           color="darkred") +
+  theme_minimal()
+
+graph_id_95_coll_long <- id_95_coll_long %>%
+  ggplot() + 
+  aes( x = date,
+       y = value,
+       color = type) + 
+  labs(title= "B: Comparison Between PM25, Temperature and Wind Over Time",
+       x= "") +
+  ylab("") +
+  geom_line(show.legend = FALSE) +
+  facet_wrap(~ type, ncol = 1, scale="free_y", labeller = as_labeller(labels_facet))+ 
+  theme_minimal()
+
+id_95_coll_graph
+graph_id_95_coll_long
+
+```
+
+\newpage
+
+
+
+# Model Specification
+
+The data plotted, especially when looking at the average of the observations over a single day, seem to suggest a \textit{non-stationary time series}. Given this, it seems plausible to proceed with the specification of a \textit{Gaussian Hidden Markov Model (HMM)}.
+
+We proceed with the specification of the following model with 4 latent states: 
+
+\begin{equation*}
+\begin{cases}
+Y_t = \mu_1 + \epsilon_t, \quad \epsilon_t \overset{iid}{\sim} N(0, \sigma_1^2)  
+& \text{if the state $S_t=1$} \\
+Y_t = \mu_2 + \epsilon_t, \quad \epsilon_t \overset{iid}{\sim} N(0, \sigma_2^2) 
+&\text{if the state $S_t=2$} \\
+Y_t = \mu_3 + \epsilon_t, \quad \epsilon_t \overset{iid}{\sim} N(0, \sigma_3^2)  
+& \text{if the state $S_t=3$} \\
+Y_t = \mu_4 + \epsilon_t, \quad \epsilon_t \overset{iid}{\sim} N(0, \sigma_4^2) 
+&\text{if the state $S_t=4$}.
+\end{cases}
+\end{equation*}
+
+\newpage
+
+
+# Optimal Estimate: Daily Data
+
+
+```{r HMM estimation Day, echo=FALSE, include=FALSE}
+set.seed(2022)
+model <- depmix(id_95_coll$pm25 ~ 1, data=id_95_coll, nstates=4)
+fmodel <- fit(model)
+summary(fmodel)
+
+```
+
+```{r MLE Estimation Day, echo=FALSE}
+
+MLEse <- standardError(fmodel) %>%
+  mutate(par = round(par,4),
+         se = round(se, 4))
+
+```
+
+
+```{r Initial Prob Day, echo=FALSE}
+
+in_prob <- data.frame(0,0,0,0)
+in_prob[nrow(in_prob),] <- MLEse[1:4,1]
+in_prob[nrow(in_prob)+1,] <- MLEse[1:4,3]
+
+in_prob <- data.frame(in_prob, row.names = c("Probability", "$se$"))
+
+kable(in_prob, 
+      digits = 4, 
+      caption = "Initial Probability",
+      col.names = c("Prob. 1", "Prob. 2", "Prob. 3", "Prob. 4"),
+      align = 'c')
+
+```
+
+```{r Transition Matrix Day, echo=FALSE}
+
+trans_mat <- data.frame(0,0,0,0)
+trans_mat[nrow(trans_mat),] <- MLEse[5:8,1]
+trans_mat[nrow(trans_mat) + 1,] <- MLEse[5:8,3]
+trans_mat[nrow(trans_mat) + 1,] <- MLEse[9:12,1]
+trans_mat[nrow(trans_mat) + 1,] <- MLEse[9:12,3]
+trans_mat[nrow(trans_mat) + 1,] <- MLEse[13:16,1]
+trans_mat[nrow(trans_mat) + 1,] <- MLEse[13:16,3]
+trans_mat[nrow(trans_mat) + 1,] <- MLEse[17:20,1]
+trans_mat[nrow(trans_mat) + 1,] <- MLEse[17:20,3]
+
+trans_mat <- data.frame(trans_mat, row.names = c("From State 1", "$se_{1}$","From State 2", "$se_{2}$","From State 3", "$se_{3}$","From State 4", "$se_{4}$"))
+
+trans_mat[2,] <- paste0("(", format(unlist(trans_mat[2,])),")")
+trans_mat[4,] <- paste0("(", format(unlist(trans_mat[4,])),")")
+trans_mat[6,] <- paste0("(", format(unlist(trans_mat[6,])),")")
+trans_mat[8,] <- paste0("(", format(unlist(trans_mat[8,])),")")
+
+kable(trans_mat, 
+      digits = 4, 
+      caption = "Transition Matrix",
+      col.names = c("To 1", "To 2", "To 3", "To 4"),
+      align = 'c')
+
+```
+
+```{r Emission Distribution Day, echo=FALSE}
+
+em_dist <- data.frame(0,0,0,0)
+em_dist[nrow(em_dist),] <- MLEse[c(21,23,25,27),1]
+em_dist[nrow(em_dist) + 1,] <- MLEse[c(21,23,25,27),3]
+em_dist[nrow(em_dist) + 1,] <- MLEse[c(22,24,26,28),1]
+em_dist[nrow(em_dist) + 1,] <- MLEse[c(22,24,26,28),3]
+
+
+em_dist <- data.frame(em_dist, row.names = c("$\\mu$", "$se_{\\mu}$", "$\\sigma$", "$se_\\sigma$"))
+
+em_dist[2,] <- paste0("(", format(unlist(em_dist[2,])),")")
+em_dist[4,] <- paste0("(", format(unlist(em_dist[4,])),")")
+
+kable(em_dist, 
+      digits = 4, 
+      caption = "Guassian Emission Distribution",
+      col.names = c("State 1", "State 2", "State 3", "State 4"),
+      align = 'c')
+
+```
+
+```{r Graph 1 Day, echo = FALSE, eval = TRUE, out.width='50%',fig.align='center', fig.cap='Add Caption'}
+
+estStates <- posterior(fmodel)
+
+id_95_states <- id_95_coll %>%
+  mutate(states=estStates[,1])
+
+id_95_states_long <- id_95_states %>%
+  pivot_longer(cols=c("pm25", "states"), names_to = "type")
+
+graph_states <- id_95_states_long %>%
+  ggplot() + 
+  aes( x = date,
+       y = value,
+       color = type) + 
+  labs(x= "", title = "B: PM2.5 Level and Optimal State Process") +
+  ylab("") +
+  geom_line(show.legend = FALSE) +
+  facet_wrap(~ type, ncol = 1, scale="free_y") + 
+  theme_minimal()
+
+```
+
+```{r Graph 2 Day, echo = FALSE, eval = TRUE}
+
+
+estMean1=fmodel@response[[1]][[1]]@parameters$coefficients
+estMean2=fmodel@response[[2]][[1]]@parameters$coefficients
+estMean3=fmodel@response[[3]][[1]]@parameters$coefficients
+estMean4=fmodel@response[[4]][[1]]@parameters$coefficients
+estMeans=rep(estMean1, nrow(id_95_coll))
+estMeans[estStates[,1]==2]=estMean2
+estMeans[estStates[,1]==3]=estMean3
+estMeans[estStates[,1]==4]=estMean4
+
+id_95_states_means <- id_95_states %>%
+  mutate(means= estMeans)
+
+id_95_states_means_long <- id_95_states_means %>%
+  pivot_longer(cols=c("pm25", "means"), names_to = "type")
+
+graph_means <- id_95_states_means_long %>%
+  ggplot() + 
+  aes( x = date,
+       y = value,
+       color = type) + 
+  labs(x= "", title = "A: PM2.5 Level with Period Specific Means") +
+  ylab("") +
+  geom_line(show.legend = FALSE) + 
+  theme_minimal()
+
+
+```
+
+```{r Graphs HMM Day, echo = FALSE, eval = TRUE, out.width='50%', fig.show='hold', fig.cap='HMM Visualization Daily Data'}
+
+graph_means
+graph_states
+
+```
+
+
+# Appendix
+
+## A1 HMM Half Day
+
+```{r HMM estimation Half, echo=FALSE, include=FALSE}
+set.seed(2022) #With this seed the higher state is 3, the lower is 1 and the middle is 2
+model <- depmix(id_95_half$pm25 ~ 1, data=id_95_half, nstates=4)
+fmodel <- fit(model)
+summary(fmodel)
+
+```
+
+```{r MLE Estimation Half, echo=FALSE}
+
+MLEse <- standardError(fmodel) %>%
+  mutate(par = round(par,4),
+         se = round(se, 4))
+
+```
+
+```{r Initial Prob Half, echo=FALSE}
+
+in_prob <- data.frame(0,0,0,0)
+in_prob[nrow(in_prob),] <- MLEse[1:4,1]
+in_prob[nrow(in_prob)+1,] <- MLEse[1:4,3]
+
+in_prob <- data.frame(in_prob, row.names = c("Probability", "$se$"))
+
+kable(in_prob, 
+      digits = 4, 
+      caption = "Initial Probability",
+      col.names = c("Prob. 1", "Prob. 2", "Prob. 3", "Prob. 4"),
+      align = 'c')
+
+```
+
+```{r Transition Matrix Half, echo=FALSE}
+
+trans_mat <- data.frame(0,0,0,0)
+trans_mat[nrow(trans_mat),] <- MLEse[5:8,1]
+trans_mat[nrow(trans_mat) + 1,] <- MLEse[5:8,3]
+trans_mat[nrow(trans_mat) + 1,] <- MLEse[9:12,1]
+trans_mat[nrow(trans_mat) + 1,] <- MLEse[9:12,3]
+trans_mat[nrow(trans_mat) + 1,] <- MLEse[13:16,1]
+trans_mat[nrow(trans_mat) + 1,] <- MLEse[13:16,3]
+trans_mat[nrow(trans_mat) + 1,] <- MLEse[17:20,1]
+trans_mat[nrow(trans_mat) + 1,] <- MLEse[17:20,3]
+
+trans_mat <- data.frame(trans_mat, row.names = c("From State 1", "$se_{1}$","From State 2", "$se_{2}$","From State 3", "$se_{3}$","From State 4", "$se_{4}$"))
+
+trans_mat[2,] <- paste0("(", format(unlist(trans_mat[2,])),")")
+trans_mat[4,] <- paste0("(", format(unlist(trans_mat[4,])),")")
+trans_mat[6,] <- paste0("(", format(unlist(trans_mat[6,])),")")
+trans_mat[8,] <- paste0("(", format(unlist(trans_mat[8,])),")")
+
+kable(trans_mat, 
+      digits = 4, 
+      caption = "Transition Matrix",
+      col.names = c("To 1", "To 2", "To 3", "To 4"),
+      align = 'c')
+
+```
+
+```{r Emission Distribution Half, echo=FALSE}
+
+em_dist <- data.frame(0,0,0,0)
+em_dist[nrow(em_dist),] <- MLEse[c(21,23,25,27),1]
+em_dist[nrow(em_dist) + 1,] <- MLEse[c(21,23,25,27),3]
+em_dist[nrow(em_dist) + 1,] <- MLEse[c(22,24,26,28),1]
+em_dist[nrow(em_dist) + 1,] <- MLEse[c(22,24,26,28),3]
+
+
+em_dist <- data.frame(em_dist, row.names = c("$\\mu$", "$se_{\\mu}$", "$\\sigma$", "$se_\\sigma$"))
+
+em_dist[2,] <- paste0("(", format(unlist(em_dist[2,])),")")
+em_dist[4,] <- paste0("(", format(unlist(em_dist[4,])),")")
+
+kable(em_dist, 
+      digits = 4, 
+      caption = "Guassian Emission Distribution",
+      col.names = c("State 1", "State 2", "State 3", "State 4"),
+      align = 'c')
+
+```
+
+```{r Graph 1 Half, echo = FALSE, eval = TRUE, out.width='50%',fig.align='center', fig.cap='Add Caption'}
+
+estStates <- posterior(fmodel)
+
+id_95_states <- id_95_half %>%
+  mutate(states=estStates[,1])
+
+id_95_states_long <- id_95_states %>%
+  pivot_longer(cols=c("pm25", "states"), names_to = "type")
+
+graph_states <- id_95_states_long %>%
+  ggplot() + 
+  aes( x = datetime,
+       y = value,
+       color = type) + 
+  labs(x= "", title = "B: PM2.5 Level and Optimal State Process") +
+  ylab("") +
+  geom_line(show.legend = FALSE) +
+  facet_wrap(~ type, ncol = 1, scale="free_y") + 
+  theme_minimal()
+
+```
+
+```{r Graph 2 Half, echo = FALSE, eval = TRUE}
+
+
+estMean1=fmodel@response[[1]][[1]]@parameters$coefficients
+estMean2=fmodel@response[[2]][[1]]@parameters$coefficients
+estMean3=fmodel@response[[3]][[1]]@parameters$coefficients
+estMean4=fmodel@response[[4]][[1]]@parameters$coefficients
+estMeans=rep(estMean1, nrow(id_95_half))
+estMeans[estStates[,1]==2]=estMean2
+estMeans[estStates[,1]==3]=estMean3
+estMeans[estStates[,1]==4]=estMean4
+
+id_95_states_means <- id_95_states %>%
+  mutate(means= estMeans)
+
+id_95_states_means_long <- id_95_states_means %>%
+  pivot_longer(cols=c("pm25", "means"), names_to = "type")
+
+graph_means <- id_95_states_means_long %>%
+  ggplot() + 
+  aes( x = datetime,
+       y = value,
+       color = type) + 
+  labs(x= "", title = "A: PM2.5 Level with Period Specific Means") +
+  ylab("") +
+  geom_line(show.legend = FALSE) + 
+  theme_minimal()
+
+
+```
+
+```{r Graphs HMM Half, echo = FALSE, eval = TRUE, out.width='50%', fig.show='hold', fig.cap='HMM Visualization Half Day Mean'}
+
+graph_means
+graph_states
+
+```
+
+\newpage
+
+## A2 HMM Hourly
+
+```{r HMM estimation Hour, echo=FALSE, include=FALSE}
+set.seed(2022) #With this seed the higher state is 3, the lower is 1 and the middle is 2
+model <- depmix(id_95$pm25 ~ 1, data=id_95, nstates=4)
+fmodel <- fit(model)
+summary(fmodel)
+
+```
+
+```{r MLE Estimation Hour, echo=FALSE}
+
+MLEse <- standardError(fmodel) %>%
+  mutate(par = round(par,4),
+         se = round(se, 4))
+
+```
+
+```{r Initial Prob Hour, echo=FALSE}
+
+in_prob <- data.frame(0,0,0,0)
+in_prob[nrow(in_prob),] <- MLEse[1:4,1]
+in_prob[nrow(in_prob)+1,] <- MLEse[1:4,3]
+
+in_prob <- data.frame(in_prob, row.names = c("Probability", "$se$"))
+
+kable(in_prob, 
+      digits = 4, 
+      caption = "Initial Probability",
+      col.names = c("Prob. 1", "Prob. 2", "Prob. 3", "Prob. 4"),
+      align = 'c')
+
+```
+
+```{r Transition Matrix Hour, echo=FALSE}
+
+trans_mat <- data.frame(0,0,0,0)
+trans_mat[nrow(trans_mat),] <- MLEse[5:8,1]
+trans_mat[nrow(trans_mat) + 1,] <- MLEse[5:8,3]
+trans_mat[nrow(trans_mat) + 1,] <- MLEse[9:12,1]
+trans_mat[nrow(trans_mat) + 1,] <- MLEse[9:12,3]
+trans_mat[nrow(trans_mat) + 1,] <- MLEse[13:16,1]
+trans_mat[nrow(trans_mat) + 1,] <- MLEse[13:16,3]
+trans_mat[nrow(trans_mat) + 1,] <- MLEse[17:20,1]
+trans_mat[nrow(trans_mat) + 1,] <- MLEse[17:20,3]
+
+trans_mat <- data.frame(trans_mat, row.names = c("From State 1", "$se_{1}$","From State 2", "$se_{2}$","From State 3", "$se_{3}$","From State 4", "$se_{4}$"))
+
+trans_mat[2,] <- paste0("(", format(unlist(trans_mat[2,])),")")
+trans_mat[4,] <- paste0("(", format(unlist(trans_mat[4,])),")")
+trans_mat[6,] <- paste0("(", format(unlist(trans_mat[6,])),")")
+trans_mat[8,] <- paste0("(", format(unlist(trans_mat[8,])),")")
+
+kable(trans_mat, 
+      digits = 4, 
+      caption = "Transition Matrix",
+      col.names = c("To 1", "To 2", "To 3", "To 4"),
+      align = 'c')
+
+```
+
+```{r Emission Distribution Hour, echo=FALSE}
+
+em_dist <- data.frame(0,0,0,0)
+em_dist[nrow(em_dist),] <- MLEse[c(21,23,25,27),1]
+em_dist[nrow(em_dist) + 1,] <- MLEse[c(21,23,25,27),3]
+em_dist[nrow(em_dist) + 1,] <- MLEse[c(22,24,26,28),1]
+em_dist[nrow(em_dist) + 1,] <- MLEse[c(22,24,26,28),3]
+
+
+em_dist <- data.frame(em_dist, row.names = c("$\\mu$", "$se_{\\mu}$", "$\\sigma$", "$se_\\sigma$"))
+
+em_dist[2,] <- paste0("(", format(unlist(em_dist[2,])),")")
+em_dist[4,] <- paste0("(", format(unlist(em_dist[4,])),")")
+
+kable(em_dist, 
+      digits = 4, 
+      caption = "Guassian Emission Distribution",
+      col.names = c("State 1", "State 2", "State 3", "State 4"),
+      align = 'c')
+
+```
+
+```{r Graph 1 Hour, echo = FALSE, eval = TRUE, out.width='50%',fig.align='center', fig.cap='Add Caption'}
+
+estStates <- posterior(fmodel)
+
+id_95_states <- id_95 %>%
+  mutate(states=estStates[,1])
+
+id_95_states_long <- id_95_states %>%
+  pivot_longer(cols=c("pm25", "states"), names_to = "type")
+
+graph_states <- id_95_states_long %>%
+  ggplot() + 
+  aes( x = datetime,
+       y = value,
+       color = type) + 
+  labs(x= "", title = "B: PM2.5 Level and Optimal State Process") +
+  ylab("") +
+  geom_line(show.legend = FALSE) +
+  facet_wrap(~ type, ncol = 1, scale="free_y") + 
+  theme_minimal()
+
+```
+
+```{r Graph 2 Hour, echo = FALSE, eval = TRUE}
+
+
+estMean1=fmodel@response[[1]][[1]]@parameters$coefficients
+estMean2=fmodel@response[[2]][[1]]@parameters$coefficients
+estMean3=fmodel@response[[3]][[1]]@parameters$coefficients
+estMean4=fmodel@response[[4]][[1]]@parameters$coefficients
+estMeans=rep(estMean1, nrow(id_95))
+estMeans[estStates[,1]==2]=estMean2
+estMeans[estStates[,1]==3]=estMean3
+estMeans[estStates[,1]==4]=estMean4
+
+id_95_states_means <- id_95_states %>%
+  mutate(means= estMeans)
+
+id_95_states_means_long <- id_95_states_means %>%
+  pivot_longer(cols=c("pm25", "means"), names_to = "type")
+
+graph_means <- id_95_states_means_long %>%
+  ggplot() + 
+  aes( x = datetime,
+       y = value,
+       color = type) + 
+  labs(x= "", title = "A: PM2.5 Level with Period Specific Means") +
+  ylab("") +
+  geom_line(show.legend = FALSE) + 
+  theme_minimal()
+
+
+```
+
+```{r Graphs HMM Hour, echo = FALSE, eval = TRUE, out.width='50%', fig.show='hold', fig.cap='HMM Visualization Hourly Data'}
+
+graph_means
+graph_states
+
+```

@@ -1,0 +1,240 @@
+---
+title: "Assignment 3 - Time Series"
+author: "Attolini Maria Carmela, Magi Alessandro"
+date: 
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = TRUE,
+	message = FALSE,
+	warning = FALSE,
+	cache = TRUE,
+	include = TRUE
+	
+)
+```
+
+```{r Libraries, echo = FALSE}
+library(tidyverse)
+library(readxl)
+library(janitor)
+library(stringr)
+library(knitr)
+library(tinytex)
+library(depmixS4)
+```
+
+
+```{r Importing Data, echo=FALSE}
+path <- "C:\\Users\\magia\\OneDrive - Università Commerciale Luigi Bocconi\\AA Second Semester\\Time Series\\Time Series Magi-Attolini\\Assignment 3\\data_assHMM.csv"
+oecd_data <- read.csv(path, header = TRUE, dec = ".", fill = TRUE)
+
+```
+
+```{r Real Interest data, echo=FALSE}
+
+real_data <- oecd_data %>% 
+  mutate(ITAbond_real = ITAbond_nom - inflation,
+         date = as.Date(Time, format = "%Y_%m_%d")) %>%
+  dplyr::select(date, ITAbond_real)
+
+```
+
+# Exercise 1
+
+Despite the high variance of the time-series makes the interpretation more difficult, the Figure 1 suggests that there are periods with high, medium and low level of real interest rates. Given this, an HMM would be appropriate to model our observable time series $(Y_t)_{t\geq1}$ of the real interest rate. In fact, it allows the probability distribution of each observation to depend on an "hidden" state process $(S_t)_{t\geq0}$. Furthermore, it seems approprate to identify three potential states.
+
+```{r Ploting, echo = FALSE, eval = TRUE, out.width='50%',fig.align='center', fig.cap='Real Interest Rate Through Time'}
+
+rint_graph <- real_data %>%
+  ggplot() +
+  aes(x=date,
+      y=ITAbond_real) +
+  labs(x= "Time",
+       y= "Real Interest Rate") + 
+  geom_line() + 
+  theme(panel.background = element_rect(fill = 'white', colour = 'black')) + 
+  theme_minimal()
+
+rint_graph
+
+```
+
+
+```{r model, echo=FALSE, include=FALSE}
+set.seed(2022) #With this seed the higher state is 3, the lower is 1 and the middle is 2
+model <- depmix(real_data$ITAbond_real ~ 1, data=real_data, nstates=3)
+fmodel <- fit(model)
+summary(fmodel)
+
+```
+
+```{r mle est, echo=FALSE}
+
+MLEse <- standardError(fmodel) %>%
+  mutate(par = round(par,4),
+         se = round(se, 4))
+
+```
+
+From tables below we can identify: 
+\begin{itemize}
+\item \textbf{Table 1}: Initial state probabilities for $S_0$. Specifically the state process start from $S_1$ with probability equal to 3, hence the sd are not avaiable.
+\item \textbf{Table 2}: The homogeneus transition matrix $A$ represent the probability of moving from a state $j$ to state  $i\; \forall t\; and \;i,j\in \{1,2,3\}$ (for example $p_{3,3} = 0.948$). We can also notice that $p_{1,3}=p_{3,1}=0.000$ which means that to move from state 1 to state 3 and backward state 2 is a mandatory step.
+\item \textbf{Table 3}: The emission distribution is a Gaussian with state dependent mean and variance. Coherently with theoretical interpretation of the states (ie. boom, recession and stable path) we can identify a high, medium and low level of the mean. 
+\item \textbf{Table 4}: The first column displays an extract from decoding results. Specifically it shows the "optimal" state sequence associated with our observation sequence. The other columns of the table show the delta probabilities, which are the probabilities of being in the state reported in column 1. 
+\end{itemize}
+\footnotesize{\textbf{NB: Standard errors are reported in parenthesis}}
+
+
+```{r Initial Prob, echo=FALSE}
+
+in_prob <- data.frame(0,0,0)
+in_prob[nrow(in_prob),] <- MLEse[1:3,1]
+in_prob[nrow(in_prob)+1,] <- MLEse[1:3,3]
+
+in_prob <- data.frame(in_prob, row.names = c("Probability", "se"))
+
+kable(in_prob, 
+      digits = 4, 
+      caption = "Initial Probability",
+      col.names = c("Prob. 1", "Prob. 2", "Prob. 3"),
+      align = 'c')
+
+```
+
+```{r Transition Matrix, echo=FALSE}
+
+trans_mat <- data.frame(0,0,0)
+trans_mat[nrow(trans_mat),] <- MLEse[4:6,1]
+trans_mat[nrow(trans_mat) + 1,] <- MLEse[4:6,3]
+trans_mat[nrow(trans_mat) + 1,] <- MLEse[7:9,1]
+trans_mat[nrow(trans_mat) + 1,] <- MLEse[7:9,3]
+trans_mat[nrow(trans_mat) + 1,] <- MLEse[10:12,1]
+trans_mat[nrow(trans_mat) + 1,] <- MLEse[10:12,3]
+
+trans_mat <- data.frame(trans_mat, row.names = c("From State 1", "se 1","From State 2", "se 2","From State 3", "se 3"))
+
+trans_mat[2,1:2] <- paste0("(", format(unlist(trans_mat[2,1:2])),")")
+trans_mat[4,] <- paste0("(", format(unlist(trans_mat[4,])),")")
+trans_mat[6,2:3] <- paste0("(", format(unlist(trans_mat[6,2:3])),")")
+
+kable(trans_mat, 
+      digits = 4, 
+      caption = "Transition Matrix",
+      col.names = c("To 1", "To 2", "To 3"),
+      align = 'c')
+
+```
+
+```{r Emission Distribution, echo=FALSE}
+
+em_dist <- data.frame(0,0,0)
+em_dist[nrow(em_dist),] <- MLEse[c(13,15,17),1]
+em_dist[nrow(em_dist) + 1,] <- MLEse[c(13,15,17),3]
+em_dist[nrow(em_dist) + 1,] <- MLEse[c(14,16,18),1]
+em_dist[nrow(em_dist) + 1,] <- MLEse[c(14,16,18),3]
+
+
+em_dist <- data.frame(em_dist, row.names = c("Mean", "se 1","Std. Dev", "se 2"))
+
+em_dist[2,] <- paste0("(", format(unlist(em_dist[2,])),")")
+em_dist[4,] <- paste0("(", format(unlist(em_dist[4,])),")")
+
+kable(em_dist, 
+      digits = 4, 
+      caption = "Guassian Emission Distribution",
+      col.names = c("State 1", "State 2", "State 3"),
+      align = 'c')
+
+```
+
+
+```{r Emission Distribution 2, echo=FALSE, eval=FALSE}
+
+mean_sd_1 <- c(fmodel@response[[1]][[1]]@parameters$coefficients,(fmodel@response[[1]][[1]]@parameters$sd))
+mean_sd_2 <- c(fmodel@response[[2]][[1]]@parameters$coefficients,fmodel@response[[2]][[1]]@parameters$sd)
+mean_sd_3 <- c(fmodel@response[[3]][[1]]@parameters$coefficients,fmodel@response[[3]][[1]]@parameters$sd)
+
+meansd_df <- data.frame(mean_sd_1, mean_sd_2, mean_sd_3, row.names = c("Mean","Variance"))
+
+kable(meansd_df, 
+      digits = 4, 
+      caption = "Emission Distribusion",
+      col.names = c("State 1", "State 2", "State 3"),
+      align = 'c')
+
+```
+
+
+```{r decoding, echo=FALSE}
+
+estStates <- posterior(fmodel)
+
+kable(estStates[66:73,], 
+      digits = 4, 
+      caption = "Optimal State Process",
+      align = 'c')
+
+```
+
+
+```{r Graph 1, echo = FALSE, eval = TRUE, out.width='50%',fig.align='center', fig.cap='Add Caption'}
+
+real_data <- real_data %>%
+  mutate(states=estStates[,1])
+
+real_data_long <- real_data %>%
+  pivot_longer(cols=c("ITAbond_real", "states"), names_to = "type")
+
+graph_states <- real_data_long %>%
+  ggplot() + 
+  aes( x = date,
+       y = value,
+       color = type) + 
+  labs(x= "Time") +
+  ylab("") +
+  geom_line(show.legend = FALSE) +
+  facet_wrap(~ type, ncol = 1, scale="free_y") + 
+  theme_minimal()
+
+```
+
+```{r Graph 2, echo = FALSE, eval = TRUE}
+
+
+estMean1=fmodel@response[[1]][[1]]@parameters$coefficients
+estMean2=fmodel@response[[2]][[1]]@parameters$coefficients
+estMean3=fmodel@response[[3]][[1]]@parameters$coefficients
+estMeans=rep(estMean1, nrow(real_data))
+estMeans[estStates[,1]==2]=estMean2
+estMeans[estStates[,1]==3]=estMean3
+
+real_data_means <- real_data %>%
+  mutate(means= estMeans)
+
+real_data_means_long <- real_data_means %>%
+  pivot_longer(cols=c("ITAbond_real", "means"), names_to = "type")
+
+graph_means <- real_data_means_long %>%
+  ggplot() + 
+  aes( x = date,
+       y = value,
+       color = type) + 
+  labs(x= "Time") +
+  ylab("") +
+  geom_line(show.legend = FALSE) + 
+  theme_minimal()
+
+
+
+```
+
+```{r Graphs, echo = FALSE, eval = TRUE, out.width='50%', fig.show='hold', fig.cap='Left: Real Interest Rate with Period Specific Means. Right: Observed Real Interest Rate and Optimal State Process'}
+
+graph_means
+graph_states
+
+```

@@ -1,0 +1,421 @@
+---
+title: "#Bocconi University -- Course 20236: Time Series Analysis"
+
+output: pdf_document
+---
+
+\begin{center}
+\textcolor{blue}{\Huge Time Series Analysis -- LAB 1:} 
+
+\medskip
+
+\textcolor{blue}{\Large I. GETTING STARTED WITH {\bf R} and \bf{R Markdown}}
+
+\medskip
+
+\textcolor{blue}{\Large II. INTRODUCTION TO TIME SERIES ANALYSIS WITH {\bf R}}
+\end{center}
+
+\bigskip
+
+\begin{center}
+{\Large Sonia Petrone}
+
+{\Large February 2021}
+\end{center}
+
+
+\bigskip
+
+# CONTENTS of LAB 1: 
+
+## PART I
+-  (0) Get started with R, RStudio, RMarkdown
+-  (1) Use R: help files & all that
+-  (2) How to import data in R
+
+## PART II
+-  (3) Time series objects. 
+-  (4) Plotting time series
+
+-  (5) Classical time series decomposition
+-  (6) Exponential smoothing
+-  (7) Contributed packages.
+Getting financial time series from web sources.  
+
+\bigskip
+
+
+# \textcolor{blue}{GETTING STARTED WITH  \bf{R} and \bf{Markdown}.}
+
+## \textcolor{blue}{We use \bf R}. 
+**R** is a free software environment for statistical computing and graphics. It is the *lingua franca* for Statistics and Data Science, all over the world. 
+
+Download **R**: <https://www.R-project.org> 
+
+Look at the **manual**:"An introduction to **R**" (and many books) which come with the program 
+<https://cran.r-project.org/manuals.html>
+
+## \textcolor{blue}{We use \bf RStudio} 
+<https://rstudio.com>
+
+## \textcolor{blue}{and \bf{R Markdown}}
+Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see \\ <http://rmarkdown.rstudio.com>.
+
+```
+1.  Download and open RStudio. 
+2.  From the menu, open a New File : choose R Markdown
+3. You now have a file.Rmd, such as this one!
+```
+This is an R Markdown document. 
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars} 
+summary(cars)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=TRUE,  out.width='50%'}
+plot(pressure)
+```
+
+Note that  `echo = FALSE` may be added to the code chunk to prevent printing of the R code that generated the plot.
+
+# R Markdown also interacts with **latex**
+
+All scientific papers are written in **latex**. 
+
+Don't worry if you are not familiar with it: at the end of this course, you will be an expert of **latex**, **R** and **R Markdown**!
+
+\bigskip
+
+
+\bigskip
+
+# (1) Help files  & all that. 
+
+## Using the HELP is crucial!
+
+``` {r help}
+help.search("time series")
+```
+
+```In Rstudio, use the menu in the panel on the right``` 
+
+The package "stats" includes many functions for time series analysis. 
+
+```Load package stats from the package menu```
+
+```{r help2}
+?stats
+library(help=stats)
+```
+
+# Install new packages
+
+Example: install and load the packages "sos", "dlm", "tseries".
+
+The package "tseries" provides tools for time series analysis and computational finance. 
+
+## In R studio, use the menu. Example: 
+- install dlm
+- load dlm (flag it)
+
+## What is available in R for ...? 
+
+- just google it.. 
+
+- or RSiteSearch("dynamic linear models")
+
+- or search at  http://cran.at.r-project.org    
+
+- or use package "sos"
+
+# (2) How to import data in **R**.
+
+R provides several data sets, see e.g. 
+```{r datasets}
+?datasets 
+```
+
+## Importing data in R. 
+
+You may want to set the working directory (menu on the top, choose Session, and Set Working Directory)
+
+ Your own data should be contained in a file.txt. 
+ For example, suppose you have a bivariate time series  (variables: x and y, say) in a file called mydata.txt
+
+**To import the data in RStudio**, just use the menu on the top right panel!
+
+(flag "headers yes"" if the headers (names of the variables) are written in your file; flag "no" otherwise.)
+
+In **R**: 
+
+- if mydata.txt includes the headers (names of the variables) 
+
+``` # mydata <- read.table ("mydata.txt", header=T) ``` 
+
+- if the headers are not included 
+
+```# mydata <- read.table ('mydata.txt', header=F, col.names=c("x","y")) ```
+
+(Be careful in choosing the names. For example, the name "data" exists already in R, and duplicating a name might cause issues.). 
+
+# Access the data. 
+Example: cars (in package datasets)
+```{r data}
+? cars
+cars$speed
+cars$dist
+# or you can attach the data 
+attach(cars)
+speed
+dist
+detach(cars)
+```
+
+# (3) Time series objects. 
+
+In R, you may have, or create,  **"time series" objects**. Example: 
+
+```{r ts objetcs}
+?ts 
+?lh
+str(lh)
+is.ts(lh)  # check if lh is a time series object
+# Another example: a monthly time series
+? AirPassengers
+str(AirPassengers)
+AirPassengers
+```
+
+# How can I create a ts object?
+
+```{r createTS}
+#look at the help file!
+?ts  
+x <- round(rnorm(24), 2)   
+# toy data: generate a sample (here of size 24) from a N(0, 4) distribution
+y <- ts(x)
+y
+z <- ts(x, freq=12)
+z
+# did you see the difference between x, y and z?
+rm(x,y,z)  # remove x, y, z
+```
+
+# (4) PLOTTING THE DATA: TIME PLOTS
+```{r plots, out.width='50%'}
+?AirPassengers  # the classical Box-Jenkins time series
+plot(AirPassengers)
+
+# For fancier plots, see the help file
+?plot
+# example 
+plot(AirPassengers, type="o") 
+plot(AirPassengers, type="o", pch=19, cex=.3)
+```
+
+A plot for looking at patterns of dependency between consecutive observations is $lag-plot$, in which you plot $y_t$ versus $y_(t-1)$
+```{r lagPlot, out.width='50%'}
+?LakeHuron
+lag.plot(LakeHuron, do.lines=F)
+# the dots tend to cluster around a straight line, which means that y_(t-1) is a good predictor of y_t. 
+
+# This can be generalized to observations more than one lag apart
+lag.plot(LakeHuron, lag=3, do.lines=F)
+```
+
+# Multiple time series
+ How can I plot multiple time series? 
+
+You can use plot or ts.plot.   
+
+**Plot several time series on a common plot** 
+
+```{r multipleTS}
+?ts.plot
+# example("ts.plot") 
+# for running the examples of "ts.plot" - quite convenient!
+```
+
+**Look at these data**, monthly deaths from bronchitis, emphysema and asthma in the UK, 1974–1979. 
+```{r ldeaths, out.width='50%'}
+?ldeaths
+
+# Plot the univariate series ldeaths
+plot(ldeaths)  # or ts.plot(ldeaths)
+
+# Plot the three series in a common graph
+ts.plot(ldeaths, mdeaths, fdeaths)
+# Nicer plots. Let me first remind these basics 
+1:6  
+c(1,2, 5, 67)
+# Then try
+ts.plot(ldeaths, mdeaths, fdeaths,lty=c(1:3))  # change lines type
+# add labels
+# ts.plot(ldeaths, mdeaths, fdeaths,lty=c(1:3), gpars=list(xlab="time", ylab="deaths"))
+
+# You may also use "plot", for separate plots
+deaths=cbind(ldeaths, mdeaths, fdeaths)  # put together the three columns
+plot(deaths)
+
+# For a comparison: 
+# ts.plot(deaths, col=1:3)
+```
+
+\bigskip
+
+# (5) TIME SERIES DECOMPOSITION
+
+## \textcolor{blue}{Classical time series decomposition}: 
+##  \textcolor{blue}{trend, seasonality, cicle, .., residual} 
+
+$$ y_t = T_t + S_t + C_t + E_t   \quad  \mbox{additive} $$
+$$ y_t = T_t * S_t * C_t * E_t   \quad \mbox{multiplicative} $$
+
+\bigskip
+
+**Is there any tool in R for time series decomposition?**
+
+There are two main function for time series decomposition: 
+ "decompose" and "stl"
+
+```{r TSdecomposition}
+?decompose
+?stl
+```
+
+- **The function "decompose"** 
+first smooths the series (i.e., determines the trend component) using a moving average, and removes it from the time series. Then, it estimates the seasonal factors from the de-trended series. Finally, the error component is determined by removing the trend and the seasonal figure. 
+
+-  **The function "stl"** 
+uses a more sophisticated smoothing technique (LOESS). See the references in the help file of stl. 
+
+\bigskip
+
+**We use "decompose"**
+
+```{r decompose help}
+# example("decompose") 
+# for running the examples in the help file of "decompose"
+```
+
+Let's look at the data **co2**
+
+```{r decompose, out.width='60%'}
+?co2
+plot(co2)
+m <- decompose(co2)  # save the output as an object
+names(m)
+plot(m)
+
+# We can choose an additive or multiplicative decomposition
+# plot(decompose(co2, type="additive"))
+```
+
+**Exercize**: Describe the AirPassengers data. 
+
+Compare the plots obtained by "decompose" and by "stl". 
+
+```{r stl, out.width='60%'}
+plot(decompose(log(AirPassengers)))
+plot(stl(log(AirPassengers), s.window="periodic"))
+```
+
+# Removing trend and seasonality.
+
+```{r airpassngers, out.width='50%'}
+plot(AirPassengers)
+# Is this series stationary? 
+# Make a logarithm transformation for stabilizing the variance
+lap=log(AirPassengers)
+plot(lap)
+# We may try the first order differences to make the series approximately stationary (in mean and variance)
+plot(diff(lap))
+# This may remove the trend, but not the seasonality. 
+# A 12 lag difference might be used for removing the trend and the seasonality
+# plot(diff(lap, lag=12))
+```
+
+**Remark: Did you succeed in removing trend and seasonality?** What is unsatisfactory? You will explore more on this data in your **Assignment 1**.
+
+\bigskip
+
+**Another example**
+```{r BJsales}
+?BJsales
+```
+
+\bigskip
+
+# (6) Exponential smoothing
+
+## Is there any **R** function for exponential smoothing and Holt Winters? 
+
+```{r HW}
+help.search("Holt Winters")
+# Look at the examples in 
+?HoltWinters
+```
+
+## Simple exponential smoothing
+
+This is a classical dataset
+```{r Nile, out.width='60%'}
+?Nile
+plot(Nile)
+```
+
+The series shows no clear trend nor seasonal behavior. We can use simple exponential smoothing. 
+
+```{r Nile ses, out.width='60%'}
+HWNile <- HoltWinters(Nile, beta=F, gamma=F)
+plot(HWNile)
+# What is the value of the smoothing parameter? 
+HWNile
+
+HWNile$alpha
+```
+
+## Look at the effect of the smoothing parameter:
+
+```{r Nile alpha, out.width='60%'}
+par(mfrow=c(2,1), cex=.4)
+plot(HWNile, main="Nile data: simple exponential smoothing, alpha=0.24")
+#cex.main=1.5 # if you want to control the title font.  
+HWNile2 <- HoltWinters(Nile, alpha=.9, beta=F, gamma=F)
+plot(HWNile2, main="Nile data: simple exponential smoothing, alpha=0.9")
+```
+
+## Holt \& Winters: including trend and seasonality.
+
+```{r seasonalHW, out.width='60%'}
+out <- HoltWinters(AirPassengers, seasonal = "mult")
+plot(out)
+plot(fitted(out))
+```
+
+# (7) Contributed packages. Financial time series. 
+
+**Contributed packages can be dowloaded and installed 
+    authomatically from CRAN!**
+
+**Examples** 
+
+- package *"tseries"* (Time Series Analysis and Computational Finance) 
+
+- package *"quantmod"* (Quantitative Financial Modelling Framework)
+
+- package **dlm** (MLE and Bayesian analysis of Dynamic Linear Models), originally developed for this course. 
+
+**Exploring around...**
+
+- From the menu, *install* the package "tseries" (if not there yet), and *load* it.  
+
+In the help, open the **vignette** for package "forecast" (**Journal of Statistical Software** paper)
+
+- Install and load package "quantmod", and explore it. 

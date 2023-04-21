@@ -1,0 +1,64 @@
+---
+title: "Bocconi University, 20236 - Time Series Analysis --- Assignment 3: HMMs with R"
+
+header_includes:
+- \usepackage{amsmath}
+- \usepackage{amssymb}
+- \usepackage{dlm}
+date: "Due by April 8, 2022"
+
+output:
+    pdf_document: default
+    html_document:
+    fig_caption: yes
+    fig_height: 6
+                 
+---
+
+```{r setup, echo=F, message=F}
+knitr::opts_chunk$set(message = FALSE,
+                      results = FALSE,
+                      warning = FALSE,
+                      echo = TRUE,
+                      fig.align = "center")
+
+set.seed(2020)
+
+library(magrittr) # pipes
+library(stringr) # str_glue
+library(depmixS4)
+library(dlm)
+library(tidyverse) # dplyr, tidyr, ggplot2
+
+
+```
+
+# Hidden Markov Models with R
+
+
+This assignment is about Hidden Markov Models (HMMs) with **R**.  We use the **R** package *depmixS4*. **Look at the material for LAB 2, posted on BBoard**.
+
+The assigment consists in the first exercize below. The proposal of an extension to a covariate-dependent transition matrix in the HMM is just a suggestion, in case you are interested, but it is not mandatory, neither you will be penalized in any way of you don't go into that. 
+
+We wil shortly also provide an introduction to your final project - so that you can start working on it, without being overwhelmed by work at the end of the course! 
+
+\bigskip
+
+# Exercize. 
+
+The dataset provided in the file data_assHMM.cvs (posted on BBoard) provides monthly data including 10 years Italian government bond's interest rate, inflation represented by the Harmonised Index of Consumer Prices (HICP) and default ratings assigned by the agencies Moody's and Fitch, in the investment grade range, i.e. from Aaa/AAA to Baa3-/BBB-. The data set collects data for the period January 1997 to July 2019, and it has been built mainly using OECD data. 
+
+- **(a)** Let us focus on the nominal interest rate for the 10 years  Italian government bond. In fact, you may want to consider the *real* interest rate, calculated from the HICP.
+
+Plot the data and comment *briefly* if and why a HMM could be a reasonable model. 
+
+Let us indeed use a Hidden Markov Model, with 3 states (representing, say, boom (i.e. less risky, lower interest rates), recession (high risk, high interest rates) and a stable path), and Gaussian emission ditributions, with state-dependent mean and variance. 
+
+Provide the MLEs of the unknown paramters of the model (and their standard errors).  Comment *briefly*.  
+
+Find the optimal state sequence (deconding) and plot it, together with the data. 
+
+- **(b) -- Optional**. HMMs are particularly useful for time series that present change points. However, one may want to go further, trying not only to *adapt* to change points, but also to *predict* a possible change point. To this aim, one may use non-homogeneous HMMs, allowing the transition matrix to depend on covariates. A reference is Zucchini, W., MacDonald, I-L. and Langrock, R. (2016) *Hidden Markov Models for Time Series: an introduction using R*. Chapman and Hall/CRC. 
+
+You may want to explore this more general class of HMMs for the data under study here. 
+

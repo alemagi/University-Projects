@@ -1,0 +1,343 @@
+---
+title: "Assignment 4 - Time Series"
+author: "Attolini Maria Carmela, Magi Alessandro"
+date: 
+header-includes:
+output: pdf_document
+
+
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = TRUE,
+	message = FALSE,
+	warning = FALSE,
+	cache = TRUE,
+	include = TRUE
+	
+)
+```
+
+```{r Libraries, echo = FALSE}
+library(readxl)
+library(janitor)
+library(stringr)
+library(knitr)
+library(tinytex)
+library(depmixS4)
+library(xts)
+library(zoo)
+library(psych)
+library(lubridate)
+library(dlm)
+library(tidyverse)
+```
+
+
+# Exercise 1
+
+The dataset Nile, available in R, provides the measurements of the annual flow of the river Nile at Ashwan,
+for the period 1871-1970.
+
+## Point 1 
+
+```{r Nile Dataset and Plot, echo = FALSE, eval = TRUE, out.width='70%', fig.show='hold', fig.align='center', fig.cap='Level of the Nile Over Time'}
+
+niledf <- data.frame(nile=as.matrix(Nile), year=time(Nile))
+
+nile_graph <- niledf %>%
+  ggplot() + 
+  aes(y=nile,
+      x=year) + 
+  labs(x = "Time",
+       y = "Level of Nile") +
+  geom_line() +
+  theme_minimal()
+
+nile_graph
+
+```
+
+```{r Estimating Model, echo = FALSE, eval = TRUE}
+
+#Estimating the model
+outTS=StructTS(Nile, type="level")
+MLE=as.numeric(outTS$coef)
+rw <- dlmModPoly(order=1,dV=MLE[2], dW=MLE[1])
+#rw <- dlm(m0=1000, C0=1000, FF=1, V=MLE[2], GG=1, W=MLE[1])
+outFilt <- dlmFilter(Nile,rw)
+
+kable(data.frame(outTS$coef), 
+      digits = 2, 
+      caption = "MLE Optimal Estimators", 
+      col.names = c("Value"), 
+      align = 'c')
+
+
+```
+
+\newpage
+
+##  Point 2
+
+After having estimated the variances for the measurement error $\sigma^2_v$ and the variance for the evolution error $\sigma^2_w$ through MLEs (Table 1), we plug them in the model as if they were "known" parameters. 
+
+\begin{eqnarray*} 
+Y_t &= \theta_t + v_t \quad    & v_t \overset{i.i.d.}\sim N(0, 1469.15])\\
+\theta_t &= \theta_{t-1} + w_t \quad   & v_t \overset{i.i.d.}\sim N(0,15098.58 )
+\end{eqnarray*}
+
+```{r Fitted and Std. Dev., echo = FALSE, eval = TRUE}
+
+#Adding fitted to dataframe
+niledf <- niledf %>%
+  mutate(fitted = dropFirst(outFilt$m))
+
+#This is the standard deviation
+listC <- dlmSvd2var(outFilt$U.C, outFilt$D.C)
+sqrtC <- sqrt(unlist(listC))
+
+#Adding standard dev to dataframe
+niledf <- niledf %>%
+  mutate(stdev = dropFirst(sqrtC))
+
+#Adding credible interval
+niledf <- niledf %>%
+  mutate(lower = fitted + qnorm(0.05, sd=stdev),
+         upper = fitted + qnorm(0.95, sd=stdev))
+
+
+nile_long <- niledf %>%
+  pivot_longer(cols=c("nile", "fitted"), names_to = "type") %>%
+  mutate(lower = ifelse(type == "fitted" , lower, NA))
+
+graph_fitted <- niledf %>%
+  ggplot() + 
+  aes( x = year,
+       y = fitted) + 
+  labs(title= "A: Filtering States Estimates",
+       x= "Time") +
+  ylab("") +
+  geom_point() +
+  geom_line(show.legend = FALSE) +
+  theme_minimal() +
+  geom_ribbon(aes(ymin=niledf$lower,
+                  ymax=niledf$upper),
+              linetype=2, 
+              alpha=0.1)
+
+graph_stdev <- niledf %>%
+  ggplot() + 
+  aes( x = year,
+       y = stdev) + 
+  labs(title= "B: Standard Deviation of States Estimates",
+       x= "Time") +
+  ylab("") +
+  geom_line(show.legend = FALSE) +
+  theme_minimal()
+
+
+combined_fitted <- nile_long %>%
+  ggplot() + 
+  aes( x = year,
+       y = value,
+       color = type) + 
+  labs(title= "C: Time Series and Filtering States and Credbile Interval",
+       x= "Time") +
+  ylab("") +
+  geom_line(show.legend = TRUE) +
+  theme_minimal() +
+  geom_ribbon(aes(ymin=nile_long$lower,
+                  ymax=nile_long$upper),
+              linetype=2, 
+              alpha=0.1,
+              show.legend = FALSE)
+
+
+```
+
+```{r Graphs Point 2, echo = FALSE, eval = TRUE, out.width='50%', fig.show='hold', fig.cap='Graphs Point 2'}
+
+graph_fitted
+graph_stdev
+combined_fitted
+
+```
+From the graph above we can see how fitted value estimates display lower variability. This is the result of the absence of and additional variability component in the actual observations, which is linked to the presence of the measurement error. As we can see from graph B, the standard deviations of state estimates are decreasing but not touching 0, reaching therefore a lower bound. This clearly implies that as T $\rightarrow$ $\infty$ at one point also the variance $C_t$ will stay constant. This is due to the fact that when more data are collected, the effect of one single observation in reducing the uncertainty about the state process will decrease, being ultimately compensated by the additional variance. 
+
+\newpage
+
+##  Point 3
+
+```{r Forecasting, echo = FALSE, eval = TRUE, out.width='70%', fig.show='hold', fig.align='center', fig.cap='Time Series and One-Step-Ahead Forecast'}
+
+#Adding forecast to dataframe
+niledf_forecast <- niledf %>%
+  filter(year>1871) %>%
+  mutate(forecast = dropFirst(outFilt$f))
+
+#This is the standard deviation
+listR <- dlmSvd2var(outFilt$U.R, outFilt$D.R)
+sqrtf <- sqrt(unlist(listR)+MLE[2])
+
+#Adding standard dev to dataframe
+niledf_forecast <- niledf_forecast %>%
+  mutate(stdevf = dropFirst(sqrtf))
+
+#Adding credible interval
+niledf_forecast <- niledf_forecast %>%
+  mutate(lower = forecast + qnorm(0.05, sd=stdevf),
+         upper = forecast + qnorm(0.95, sd=stdevf))
+
+nile_long_forecast <- niledf_forecast %>%
+  pivot_longer(cols=c("nile", "forecast"), names_to = "type") %>%
+  mutate(lower = ifelse(type == "forecast" , lower, NA))
+
+combined_forecast <- nile_long_forecast %>%
+  ggplot() + 
+  aes( x = year,
+       y = value,
+       color = type) + 
+  labs(x= "Time") +
+  ylab("") +
+  geom_line(show.legend = TRUE) +
+  theme_minimal() +
+  geom_ribbon(aes(ymin=nile_long_forecast$lower,
+                  ymax=nile_long_forecast$upper),
+              linetype=2, 
+              alpha=0.1,
+              show.legend = FALSE)
+
+combined_forecast
+
+
+```
+
+
+##  Point 4
+
+To illustrate the role played by the signal-to-noise ration $W/V$, we are computing and plotting different models with different signal-to-noise ratios. This as to display the different sensitivity of the state prior-to-posterior updating to new observations.
+As we can notice from the below graphs, the signal-to-noise ratio ${\sigma_w^2}/{\sigma_v^2}$ provides information on how much the filtered values tend to follow the actual observation, hence how much we can trust the observations. With Alternative 2 we have a relatively high ratio, which implies that forecast values tend to follow the data. With alternative 3, instead, a very small signal-to-noise ratio points exactly in the opposite direction. This is shown in the graph, in which the forecast line is fairly smooth compared to the Nile river observations.
+
+```{r Alternative Models, echo = FALSE, eval = TRUE}
+
+#Estimating the model
+outTS <- StructTS(Nile, type="level")
+MLE=as.numeric(outTS$coef)
+
+#MLE W and V
+rw1_W <- MLE[1]
+# 1469.147
+rw1_V <- MLE[2]
+# 15098.58
+
+#Alternative 2
+rw2_W <- 1600
+rw2_V <- 1000
+
+#Alternative 3
+rw3_W <- 1500
+rw3_V <- 25000
+
+
+rw1 <- dlmModPoly(order=1,dV=rw1_V, dW=rw1_W)
+rw2 <- dlmModPoly(order=1,dV=rw2_V, dW=rw2_W)
+rw3 <- dlmModPoly(order=1,dV=rw3_V, dW=rw3_W)
+
+
+outFilt1 <- dlmFilter(Nile,rw1)
+outFilt2 <- dlmFilter(Nile,rw2)
+outFilt3 <- dlmFilter(Nile,rw3)
+
+
+outFilt <- dlmFilter(Nile,rw)
+
+ratio_df <- data.frame(c(rw1$W,rw1$V,rw1$W/rw1$V),
+                       c(rw2$W,rw2$V,rw2$W/rw2$V),
+                       c(rw3$W,rw3$V,rw3$W/rw3$V), row.names = c("$\\sigma^2_w$", "$\\sigma^2_v$", "$Ratio$"))
+
+
+kable(ratio_df, 
+      digits = 2, 
+      caption = "Sigma and Ratios", 
+      col.names = c("MLE", "Alternative 2", "Alternative 3"), 
+      align = 'c')
+
+
+```
+
+
+```{r Alternative Forecasting, echo = FALSE, eval = TRUE}
+
+
+#First Alternative
+niledf_1 <- niledf %>%
+  filter(year>1871) %>%
+  mutate(forecast = dropFirst(outFilt1$f))
+
+nile_long_fore1 <- niledf_1 %>%
+  pivot_longer(cols=c("nile", "forecast"), names_to = "type")
+
+#Second Alternative
+niledf_2 <- niledf %>%
+  filter(year>1871) %>%
+  mutate(forecast = dropFirst(outFilt2$f))
+
+nile_long_fore2 <- niledf_2 %>%
+  pivot_longer(cols=c("nile", "forecast"), names_to = "type")
+
+#Third Alternative
+niledf_3 <- niledf %>%
+  filter(year>1871) %>%
+  mutate(forecast = dropFirst(outFilt3$f))
+
+nile_long_fore3 <- niledf_3 %>%
+  pivot_longer(cols=c("nile", "forecast"), names_to = "type")
+
+combined_forecast1 <- nile_long_fore1 %>%
+  ggplot() + 
+  aes( x = year,
+       y = value,
+       color = type) + 
+  labs(title= paste("A: Ratio", round(rw1$W/rw1$V, 3)),
+       x= "Time") +
+  ylab("") +
+  geom_line(show.legend = TRUE) +
+  theme_minimal()
+
+combined_forecast2 <- nile_long_fore2 %>%
+  ggplot() + 
+  aes( x = year,
+       y = value,
+       color = type) + 
+  labs(title= paste("B: Ratio", round(rw2$W/rw2$V, 3)),
+       x= "Time") +
+  ylab("") +
+  geom_line(show.legend = TRUE) +
+  theme_minimal()
+
+combined_forecast3 <- nile_long_fore3 %>%
+  ggplot() + 
+  aes( x = year,
+       y = value,
+       color = type) + 
+  labs(title= paste("C: Ratio", round(rw3$W/rw3$V, 3)),
+       x= "Time") +
+  ylab("") +
+  geom_line(show.legend = TRUE) +
+  theme_minimal()
+
+
+```
+
+```{r Alternative Forecasting Graphs, echo = FALSE, eval = TRUE, out.width='50%', fig.show='hold' ,fig.cap='Alternative Forecasting'}
+
+combined_forecast1
+combined_forecast2
+combined_forecast3
+
+
+```
+
+

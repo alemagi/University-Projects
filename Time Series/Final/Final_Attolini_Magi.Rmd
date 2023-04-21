@@ -1,0 +1,1143 @@
+---
+title: "Final Assignment - Time Series - Group 10"
+author: "Attolini Maria Carmela, Magi Alessandro"
+date: 
+output: pdf_document
+
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = TRUE,
+	message = FALSE,
+	warning = FALSE,
+	cache = TRUE,
+	include = TRUE
+	
+)
+```
+
+```{r Libraries, echo = FALSE}
+library(tidyverse)
+library(readxl)
+library(janitor)
+library(stringr)
+library(knitr)
+library(tinytex)
+library(depmixS4)
+library(xts)
+library(zoo)
+library(psych)
+library(lubridate)
+library(dlm)
+library(sf)
+library(geosphere)
+library(ggpubr)
+```
+
+# Introduction
+
+We are working with space-temporal data from the U.S. Environmental Protection Agency (EPS). The dataset displays hourly air quality data measured in 10 different stations in California from June to September 2020. In particular, we start focusing and analyzing the data of station 55 (station_id 55). The main scope for this analysis is to provide meaningful insights on air pollution dynamics, as to credibly predict future levels of pollution, with a given uncertainty, and take proper measures in terms of policymaking, as to prevent the occurrence of health problems. 
+
+
+```{r Importing Data, echo=FALSE}
+path_carmela <- "C:\\Users\\pronto all'uso\\Desktop\\Bocconi materials\\ESS\\Time series analysis\\Final project\\ts_epa_2020_west_sept_fill (1).csv"
+path_ale <- "C:\\Users\\magia\\OneDrive - Università Commerciale Luigi Bocconi\\AA Second Semester\\Time Series\\Time Series Magi-Attolini\\Final\\ts_epa_2020_west_sept_fill.csv"
+dataset <- read_csv(path_ale, col_types = cols(temp = col_double(), wind = col_double()))
+
+#Here we exctract only id_55 station
+id_55 <- dataset %>%
+  filter(station_id==55)
+
+```
+
+# Plots and Descriptive Statistics
+
+```{r Work the Dataset, echo=FALSE}
+
+#Here I create long dataset to wrap plot
+id_55_long <- id_55 %>%
+  dplyr::select(datetime, pm25, temp, wind) %>%
+  pivot_longer(cols=c("pm25", "temp", "wind"), names_to = "type")
+
+#Here I collapse by day
+id_55_coll <- id_55 %>%
+  mutate(date=as.Date(datetime), time=format(datetime, "%H:%M:%S")) %>%
+  group_by(date) %>%
+  summarize(station_id=mean(station_id), pm25=mean(pm25), temp=mean(temp), wind=mean(wind))
+
+#Same for collapsed
+id_55_coll_long <- id_55_coll %>%
+  dplyr::select(date, pm25, temp, wind) %>%
+  pivot_longer(cols=c("pm25", "temp", "wind"), names_to = "type")
+
+#Half of the day
+id_55_half <- id_55 %>%
+  mutate(date=as.Date(datetime), 
+         first_half= ifelse(hour(datetime) < 12 & hour(datetime) >=0, 1, 0)) %>%
+  group_by(date, first_half) %>%
+  summarize(station_id=mean(station_id), pm25=mean(pm25), temp=mean(temp), wind=mean(wind), .groups = "drop")
+
+id_55_half <- id_55_half %>%
+  mutate(time=ifelse(first_half==1, "11:59:99","23:59:99"),
+         datetime=as.POSIXct(paste(date, time), "%Y-%m-%d %H:%M:%S"))
+
+id_55_half <- id_55_half %>%
+  arrange(datetime)
+
+#Half of the day Multivariate
+multivariate <- dataset %>%
+  filter(station_id %in% c("55","47","92","95"))
+
+multivariate_half <- multivariate %>%
+  mutate(date=as.Date(datetime), 
+         first_half= ifelse(hour(datetime) < 12 & hour(datetime) >=0, 1, 0)) %>%
+  group_by(station_id, date, first_half) %>%
+  summarize(station_id=mean(station_id), pm25=mean(pm25), temp=mean(temp), wind=mean(wind), .groups = "drop")
+
+multivariate_half <- multivariate_half %>%
+  mutate(time=ifelse(first_half==1, "11:59:99","23:59:99"),
+         datetime=as.POSIXct(paste(date, time), "%Y-%m-%d %H:%M:%S"))
+
+multivariate_half <- multivariate_half %>%
+  arrange(station_id,datetime)
+
+#Same for collapsed
+id_55_half_long <- id_55_half %>%
+  dplyr::select(datetime, pm25, temp, wind) %>%
+  pivot_longer(cols=c("pm25", "temp", "wind"), names_to = "type")
+
+
+```
+
+
+```{r Descriptive Stats, echo = FALSE, eval = TRUE}
+
+#Little check to verify 0 missing values
+missing_pm <- id_55 %>%
+  filter(is.na(pm25)) %>%
+  count()
+
+missing_temp <- id_55 %>%
+  filter(is.na(temp)) %>%
+  count()
+
+missing_wind <- id_55 %>%
+  filter(is.na(wind)) %>%
+  count()
+
+#Construct Descriptive Statistics Table
+descriptive_stats <- id_55 %>%
+  dplyr::select(pm25, temp, wind)
+
+descriptive_stats <- describe(descriptive_stats, fast=TRUE, ranges = TRUE, na.rm=TRUE)
+descriptive_stats <- descriptive_stats[, 2:7]
+row.names(descriptive_stats) <- c("PM2.5", "Temperature", "Wind")
+
+
+#How many times pm25 pass the threshold?
+
+id_55_freq <- id_55 %>%
+  dplyr::select(pm25) %>%
+  mutate(pass= ifelse(pm25 >= 25, 1, 0)) %>%
+  dplyr::summarize(n_obs=n(), n_pass= sum(pass), freq = round(n_pass/n_obs*100,2))
+
+id_55_freq[,3] <- paste0(id_55_freq[1,3],"%")
+
+#id_55_freq <- id_55 %>%
+#  dplyr::select(pm25) %>%
+#  filter(pm25 >= 25) %>%
+#  dplyr::summarize(n_obs= n(), freq = round(n_obs/nrow(id_55)*100,2))
+
+
+
+```
+
+
+```{r Table 1, echo = FALSE, eval = TRUE, , out.width='40%'}
+
+kable(descriptive_stats, 
+      digits = 2, 
+      caption = "Descriptive Statistics (Hourly Data)", 
+      col.names = c("Number of Obs", "Mean", "Standard Deviation", "Min", "Max", "Range"), 
+      align = 'c')
+
+```
+
+```{r Table 2, echo = FALSE, eval = TRUE, , out.width='40%'}
+
+kable(id_55_freq, 
+      digits = 2, 
+      caption = "PM2.5 Frequency of Passing Threshold (Hourly Data)", 
+      col.names = c("N. Obs", "N. Pass", "Frequency"), 
+      align = 'c')
+
+```
+
+```{r Hourly Graph, echo=FALSE, eval = TRUE, out.width='40%', fig.show='hold', fig.cap='Time Series by Hour at Station 55', fig.align='center'}
+
+id_55_graph <- id_55 %>%
+  ggplot() +
+  aes(x=datetime,
+      y=pm25) +
+  labs(title= "A: PM2.5 Level Over Time",
+       x= "",
+       y= "") + 
+  geom_line() + 
+  annotate(geom="rect", 
+           xmax=max(id_55$datetime), 
+           ymin=25,
+           xmin=min(id_55$datetime),
+           ymax=max(id_55$pm25), 
+           fill="darkred",
+           alpha=0.2) +
+  annotate(geom="text", 
+           x=as.POSIXct("2020-06-25 23:00:00 UTC"), 
+           y=max(id_55$pm25)-25, 
+           label="Dangerous PM2.5 level", 
+           color="darkred") +
+  theme_minimal()
+
+labels_facet <- c(
+                    `pm25` = "PM2.5",
+                    `temp` = "Temperature",
+                    `wind` = "Wind"
+                    )
+
+graph_id_55_long <- id_55_long %>%
+  ggplot() + 
+  aes( x = datetime,
+       y = value,
+       color = type) + 
+  labs(title= "B: Comparison Between PM25, Temperature and Wind Over Time",
+       x= "") +
+  ylab("") +
+  geom_line(show.legend = FALSE) +
+  facet_wrap(~ type, ncol = 1, scale="free_y", labeller = as_labeller(labels_facet))+ 
+  theme_minimal()
+
+id_55_graph
+graph_id_55_long
+
+```
+
+```{r Half Day Graph, echo=FALSE, eval = TRUE, out.width='40%', fig.show='hold', fig.cap='Time Series Mean Over Half-Day at Station 55',fig.align='center'}
+
+id_55_half_graph <- id_55_half %>%
+  ggplot() +
+  aes(x=datetime,
+      y=pm25) +
+  labs(title= "A: PM2.5 Level Over Time",
+       x= "",
+       y= "") + 
+  geom_line() + 
+  annotate(geom="rect", 
+           xmax=max(id_55_half$datetime), 
+           ymin=25,
+           xmin=min(id_55_half$datetime),
+           ymax=max(id_55_half$pm25), 
+           fill="darkred",
+           alpha=0.2) +
+  annotate(geom="text", 
+           x=as.POSIXct("2020-06-25 23:00:00 UTC"), 
+           y=max(id_55_half$pm25)-25, 
+           label="Dangerous PM2.5 level", 
+           color="darkred") +
+  theme_minimal()
+
+
+
+graph_id_55_half_long <- id_55_half_long %>%
+  ggplot() + 
+  aes( x = datetime,
+       y = value,
+       color = type) + 
+  labs(title= "B: Comparison Between PM25, Temperature and Wind Over Time",
+       x= "") +
+  ylab("") +
+  geom_line(show.legend = FALSE) +
+  facet_wrap(~ type, ncol = 1, scale="free_y", labeller = as_labeller(labels_facet))+ 
+  theme_minimal()
+
+id_55_half_graph
+graph_id_55_half_long
+
+```
+
+```{r Correlation, echo = FALSE, eval = TRUE, out.width='40%', fig.show='hold', fig.cap='Variables Correlation', fig.align='center'}
+
+id_55_half_corr <- id_55_half %>%
+  dplyr::select(datetime, pm25, temp, wind) %>%
+  pivot_longer(cols=c("temp", "wind"), names_to = "type")
+
+
+temp_wind_pm <- ggplot(data=id_55_half_corr, aes(x=value, y=pm25, color=factor(type)))+
+  geom_point(size = 0.5)+
+  facet_wrap(~ type, ncol=2)+
+  labs(x="Left: Temperature. Right: Wind", 
+       y=expression(paste("PM2.5 (", mu, "g/m"^3, ")")),
+       color = "Legend")+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(), 
+        axis.line = element_line(colour = "black"))+
+  scale_color_brewer(palette = "Set2")
+
+temp_wind_pm
+
+```
+
+We have plotted the time series according to the data-frequency levels: the original streaming-in hourly measurements and the average over 12 and 24 hours. 
+Figure 1 and 2 Panel A suggest the presence of at least one change-point in the $PM_{2.5}$ data, implying  non-stationarity of the time series. It is not clear the origin of such breaks, but it is plausibly linked to fire outburst, which in turn depend on high temperatures and wind path. As panel B of the same figures shows, the three time series are likely to be correlated, for example with higher $PM_{2.5}$ concentration corresponding to different wind speed (knots/second). To clarify the impact of wind and temperature levels on $PM_{2.5}$ concentration we have investigated and plotted their correlation in Figure 3. From the graphs above wind measurements appear to be inversely correlated with pollution level. We consider this non negligible aspect  fitting a univariate DLM for station 55 with a regression component in section 3.
+These changes result in a quite concerning scenario: Table 2 exhibits that in 29.37\% of our observations the level of $PM_{2.5}$ is above the safe suggested limit. This is consistent with graphs showing relatively frequent spikes in the "red zone" above 25 $PM_{2.5}$. This calls for further investigation through statistical model specification.
+
+
+
+# Model Specification 1: HMM
+
+We specify a \textit{Gaussian Hidden Markov Model (HMM)} with 3 latent states, allowing for overdispersion and serial correlation. Unknown parameters are estimated through maximum likelihood. As for the descriptive statistics, we have estimated the model at three frequency levels. Daily averages are easier to interpret and particularly important for policymaking given that the suggested limit of $PM_{2.5}$ is based on a 24 hours average. However, we provide an interpretation based on hourly observations, which display an higher level of detail in estimating transition probabilities from one state to another in a shorter time frame. 
+
+\begin{equation*}
+\begin{cases}
+Y_t = \mu_1 + \epsilon_t, \quad \epsilon_t \overset{iid}{\sim} N(0, \sigma_1^2)  
+& \text{if the state $S_t=1$} \\
+Y_t = \mu_2 + \epsilon_t, \quad \epsilon_t \overset{iid}{\sim} N(0, \sigma_2^2) 
+&\text{if the state $S_t=2$} \\
+Y_t = \mu_3 + \epsilon_t, \quad \epsilon_t \overset{iid}{\sim} N(0, \sigma_3^2)  
+& \text{if the state $S_t=3$}.
+\end{cases}
+\end{equation*}
+
+
+
+It is  concerning to notice that only in one case (state 1) the mean value is below the danger threshold, meaning that in several occasions pollution concentration exceeds the standards in this locality. Another relevant aspect is the higher instability of high-risk states, as Table 5 shows a higher variance for extremely dangerous $PM_{2.5}$ levels. This feature hides greater difficulties in using the model to predict accurate pollution levels when it is more needed for health provisions. 
+
+To prevent harmful health consequences, one can be interested in the probability of maintaining the same level of pollution in two consecutive hours. This information is provided looking at values along the main diagonal of the transition matrix for station 55 (Table 4). Specifically, we can see that if in one hour we observe a value of $PM_{2.5}$ in state 1 (so no dangerous territory), there is a very high probability ($0.9925$) of not seeing an alarming value of particulate matter in the following hour. Equally important is the fact that it is impossible to move directly from the safer to the riskier state, allowing for at least an hour gap to address the higher exposure and health risk. Symmetrically, a sudden drop from high $PM_{2.5}$ levels to below-threshold ones is impossible without passing from the intermediate State 2. To quantify the probability of a decrease/increase within few hours we exploit the properties of HMM and use an \textit{higher order transition probabilities} $p_{j,k}^{(n)} = P(Y_{n+1}= k |Y_t =j)$. This method is useful to predict several hours ahead alarming particulate matters levels.
+
+
+```{r HMM estimation Hour, echo=FALSE, include=FALSE}
+set.seed(29)
+model <- depmix(id_55$pm25 ~ 1, data=id_55, nstates=3)
+fmodel <- fit(model)
+summary(fmodel) #MLEs of unkown parameters
+
+```
+
+```{r MLE Estimation Hour, echo=FALSE}
+
+MLEse <- standardError(fmodel) %>%
+  mutate(par = round(par,4),
+         se = round(se, 4))
+
+```
+
+```{r Initial Prob Hour, echo=FALSE}
+
+in_prob <- data.frame(0,0,0)
+in_prob[nrow(in_prob),] <- MLEse[1:3,1]
+in_prob[nrow(in_prob)+1,] <- MLEse[1:3,3]
+
+in_prob <- data.frame(in_prob, row.names = c("Probability", "$se$"))
+
+kable(in_prob, 
+      digits = 4, 
+      caption = "Initial Probability",
+      col.names = c("Prob. 1", "Prob. 2", "Prob. 3"),
+      align = 'c')
+
+```
+
+```{r Transition Matrix Hour, echo=FALSE}
+
+trans_mat <- data.frame(0,0,0)
+trans_mat[nrow(trans_mat),] <- MLEse[4:6,1]
+trans_mat[nrow(trans_mat) + 1,] <- MLEse[4:6,3]
+trans_mat[nrow(trans_mat) + 1,] <- MLEse[7:9,1]
+trans_mat[nrow(trans_mat) + 1,] <- MLEse[7:9,3]
+trans_mat[nrow(trans_mat) + 1,] <- MLEse[10:12,1]
+trans_mat[nrow(trans_mat) + 1,] <- MLEse[10:12,3]
+
+trans_mat <- data.frame(trans_mat, row.names = c("From State 1", "$se_{1}$","From State 2", "$se_{2}$","From State 3", "$se_{3}$"))
+
+trans_mat[2,] <- paste0("(", format(unlist(trans_mat[2,])),")")
+trans_mat[4,] <- paste0("(", format(unlist(trans_mat[4,])),")")
+trans_mat[6,] <- paste0("(", format(unlist(trans_mat[6,])),")")
+
+kable(trans_mat, 
+      digits = 4, 
+      caption = "Transition Matrix",
+      col.names = c("To 1", "To 2", "To 3"),
+      align = 'c')
+
+```
+
+```{r Emission Distribution Hour, echo=FALSE}
+
+em_dist <- data.frame(0,0,0)
+em_dist[nrow(em_dist),] <- MLEse[c(13,15,17),1]
+em_dist[nrow(em_dist) + 1,] <- MLEse[c(13,15,17),3]
+em_dist[nrow(em_dist) + 1,] <- MLEse[c(14,16,18),1]
+em_dist[nrow(em_dist) + 1,] <- MLEse[c(14,16,18),3]
+
+
+em_dist <- data.frame(em_dist, row.names = c("$\\mu$", "$se_{\\mu}$", "$\\sigma$", "$se_\\sigma$"))
+
+em_dist[2,] <- paste0("(", format(unlist(em_dist[2,])),")")
+em_dist[4,] <- paste0("(", format(unlist(em_dist[4,])),")")
+
+kable(em_dist, 
+      digits = 4, 
+      caption = "Guassian Emission Distribution",
+      col.names = c("State 1", "State 2", "State 3"),
+      align = 'c')
+
+```
+
+```{r Graph 1 Hour, echo = FALSE, eval = TRUE, out.width='50%',fig.align='center', fig.cap='Add Caption'}
+
+estStates <- posterior(fmodel)
+
+id_55_states <- id_55 %>%
+  mutate(states=estStates[,1])
+
+id_55_states_long <- id_55_states %>%
+  pivot_longer(cols=c("pm25", "states"), names_to = "type")
+
+```
+
+```{r Graph 2 Hour, echo = FALSE, eval = TRUE}
+
+estMean1=fmodel@response[[1]][[1]]@parameters$coefficients
+estMean2=fmodel@response[[2]][[1]]@parameters$coefficients
+estMean3=fmodel@response[[3]][[1]]@parameters$coefficients
+estMeans=rep(estMean1, nrow(id_55))
+estMeans[estStates[,1]==2]=estMean2
+estMeans[estStates[,1]==3]=estMean3
+
+id_55_states_means <- id_55_states %>%
+  mutate(means= estMeans)
+
+id_55_states_means_long <- id_55_states_means %>%
+  pivot_longer(cols=c("pm25", "means"), names_to = "type")
+
+graph_means <- id_55_states_means_long %>%
+  ggplot() + 
+  aes( x = datetime,
+       y = value,
+       color = type) + 
+  labs(x= "", title = "Hourly Data") +
+  ylab("") +
+  geom_line(show.legend = FALSE) + 
+  theme_minimal()
+
+
+
+
+```
+
+
+```{r Heterogeneous Hour, echo=FALSE, include=FALSE}
+
+hetero_model <- depmix(id_55$pm25 ~ 1, data=id_55, nstates=3,
+transition = ~ scale(id_55$temp) + scale(id_55$wind),
+instart = runif(3))
+
+set.seed(2)
+fmod <- fit(hetero_model)
+summary(fmod)
+
+mod_estStates <- posterior(fmod)
+
+```
+
+
+
+```{r HMM estimation Half, echo=FALSE, include=FALSE}
+set.seed(2022) 
+model <- depmix(id_55_half$pm25 ~ 1, data=id_55_half, nstates=3)
+fmodel <- fit(model)
+summary(fmodel)
+
+```
+
+```{r MLE Estimation Half, echo=FALSE}
+
+MLEse <- standardError(fmodel) %>%
+  mutate(par = round(par,4),
+         se = round(se, 4))
+
+```
+
+```{r Initial Prob Half, echo=FALSE, eval=FALSE}
+
+in_prob <- data.frame(0,0,0)
+in_prob[nrow(in_prob),] <- MLEse[1:3,1]
+in_prob[nrow(in_prob)+1,] <- MLEse[1:3,3]
+
+in_prob <- data.frame(in_prob, row.names = c("Probability", "$se$"))
+
+kable(in_prob, 
+      digits = 4, 
+      caption = "Initial Probability",
+      col.names = c("Prob. 1", "Prob. 2", "Prob. 3"),
+      align = 'c')
+
+```
+
+```{r Transition Matrix Half, echo=FALSE, eval=FALSE}
+
+trans_mat <- data.frame(0,0,0)
+trans_mat[nrow(trans_mat),] <- MLEse[4:6,1]
+trans_mat[nrow(trans_mat) + 1,] <- MLEse[4:6,3]
+trans_mat[nrow(trans_mat) + 1,] <- MLEse[7:9,1]
+trans_mat[nrow(trans_mat) + 1,] <- MLEse[7:9,3]
+trans_mat[nrow(trans_mat) + 1,] <- MLEse[10:12,1]
+trans_mat[nrow(trans_mat) + 1,] <- MLEse[10:12,3]
+
+trans_mat <- data.frame(trans_mat, row.names = c("From State 1", "$se_{1}$","From State 2", "$se_{2}$","From State 3", "$se_{3}$"))
+
+trans_mat[2,] <- paste0("(", format(unlist(trans_mat[2,])),")")
+trans_mat[4,] <- paste0("(", format(unlist(trans_mat[4,])),")")
+trans_mat[6,] <- paste0("(", format(unlist(trans_mat[6,])),")")
+
+kable(trans_mat, 
+      digits = 4, 
+      caption = "Transition Matrix",
+      col.names = c("To 1", "To 2", "To 3"),
+      align = 'c')
+
+```
+
+```{r Emission Distribution Half, echo=FALSE, eval=FALSE}
+
+em_dist <- data.frame(0,0,0)
+em_dist[nrow(em_dist),] <- MLEse[c(13,15,17),1]
+em_dist[nrow(em_dist) + 1,] <- MLEse[c(13,15,17),3]
+em_dist[nrow(em_dist) + 1,] <- MLEse[c(14,16,18),1]
+em_dist[nrow(em_dist) + 1,] <- MLEse[c(14,16,18),3]
+
+
+em_dist <- data.frame(em_dist, row.names = c("$\\mu$", "$se_{\\mu}$", "$\\sigma$", "$se_\\sigma$"))
+
+em_dist[2,] <- paste0("(", format(unlist(em_dist[2,])),")")
+em_dist[4,] <- paste0("(", format(unlist(em_dist[4,])),")")
+
+kable(em_dist, 
+      digits = 4, 
+      caption = "Guassian Emission Distribution",
+      col.names = c("State 1", "State 2", "State 3"),
+      align = 'c')
+
+```
+
+```{r Graph 1 Half, echo = FALSE, eval = TRUE, out.width='50%',fig.align='center', fig.cap='Add Caption'}
+
+estStates <- posterior(fmodel)
+
+id_55_states <- id_55_half %>%
+  mutate(states=estStates[,1])
+
+id_55_states_long <- id_55_states %>%
+  pivot_longer(cols=c("pm25", "states"), names_to = "type")
+
+```
+
+```{r Graph 2 Half, echo = FALSE, eval = TRUE}
+
+
+estMean1=fmodel@response[[1]][[1]]@parameters$coefficients
+estMean2=fmodel@response[[2]][[1]]@parameters$coefficients
+estMean3=fmodel@response[[3]][[1]]@parameters$coefficients
+estMeans=rep(estMean1, nrow(id_55_half))
+estMeans[estStates[,1]==2]=estMean2
+estMeans[estStates[,1]==3]=estMean3
+
+id_55_states_means <- id_55_states %>%
+  mutate(means= estMeans)
+
+id_55_states_means_long <- id_55_states_means %>%
+  pivot_longer(cols=c("means", "pm25"), names_to = "type")
+
+graph_means_half <- id_55_states_means_long %>%
+  ggplot() + 
+  aes( x = datetime,
+       y = value,
+       color = type) + 
+  labs(x= "", title = "B: Half-Day Means Data") +
+  ylab("") +
+  geom_line(show.legend = FALSE) + 
+  theme_minimal()
+
+
+
+```
+
+```{r Graphs HMM Half, echo = FALSE, eval = TRUE, out.width='40%', fig.show='hold',fig.align='center', fig.cap='PM2.5 Level with Period Specific Means'}
+
+graph_means
+graph_means_half
+
+```
+
+
+
+
+# Model Specification 2: Random Walk Plus Noise
+
+We now fit a simple \textit{random walk plus noise} for station 55. The rationale is that with the previous HMM we assume the presence of a discrete state variable (three latent states), while here we favor a linear-Gaussian continuous state variable. The use of this simple DLM is subject to the assumption of normality, rather convenient for recursive computational purposes. Online estimation and state and observation predictions based on the Kalman filter recursive formulae, using \textit{streaming-in data} to recursively update our estimates and forecasts on the latent states, which in turn are used to predict future intensity of $PM_{2.5}$ and give informed policy suggestions. 
+
+\begin{equation*}
+\begin{cases}
+Y_{55,t} = \theta_{55,t} + v_{55,t}, \quad v_{55,t} \overset{iid}{\sim} N(0, \sigma_v^2)  \\
+\theta_{55,t} = \theta_{55,t-1} + w_{55,t}, \quad w_{55,t} \overset{iid}{\sim} N(0, \sigma_w^2) 
+
+\end{cases}
+\end{equation*}
+
+Given $\theta_0, (v_{55,t})$ and  $(w_{55,t})$ independent.
+
+```{r Spec. Random Walk Noise Hourly, echo = FALSE, eval = TRUE}
+
+buildrw <- function(parameters){
+    dlmModPoly(order=1, dV=parameters[1], dW=parameters[2], m0=id_55$pm25[1])}
+
+outMLE_hourly <- dlmMLE(id_55$pm25, rep(100, 2), buildrw, lower=c(0.000001, 0), hessian=TRUE)   
+
+# Estimating Standard Errors
+AsymCov <- solve(outMLE_hourly$hessian) 
+MLEse_hour <- sqrt(diag(AsymCov))  
+
+rw <- buildrw(outMLE_hourly$par)
+outFilt <- dlmFilter(id_55$pm25,rw)
+
+
+
+
+```
+
+
+```{r FIlter and Std. Dev. Hourly, echo = FALSE, eval = TRUE}
+
+#Adding fitted to dataframe
+id_55 <- id_55 %>%
+  mutate(fitted = dropFirst(outFilt$m))
+
+#This is the standard deviation
+listC <- dlmSvd2var(outFilt$U.C, outFilt$D.C)
+sqrtC <- sqrt(unlist(listC))
+
+#Adding standard dev to dataframe
+id_55 <- id_55 %>%
+  mutate(stdev = dropFirst(sqrtC))
+
+#Adding credible interval
+id_55 <- id_55 %>%
+  mutate(lower = fitted + qnorm(0.05, sd=stdev),
+         upper = fitted + qnorm(0.95, sd=stdev))
+
+
+graph_fitted_hour <- id_55 %>%
+  ggplot() + 
+  aes( x = datetime,
+       y = fitted) + 
+  labs(title= "A: Filtering Hourly",
+       x= "Time") +
+  ylab("") +
+  geom_line(show.legend = FALSE) +
+  theme_minimal() +
+  geom_ribbon(aes(ymin=id_55$lower,
+                  ymax=id_55$upper),
+              linetype=2, 
+              alpha=0.3)
+
+
+```
+
+
+```{r Forecasting Hourly, echo = FALSE, eval = TRUE}
+
+#Adding forecast to dataframe
+id_55_forecast <- id_55[-1,] %>%
+  mutate(forecast = dropFirst(outFilt$f))
+
+#This is the standard deviation
+listR <- dlmSvd2var(outFilt$U.R, outFilt$D.R)
+sqrtf <- sqrt(unlist(listR)+outMLE_hourly$par[1])
+
+#Adding standard dev to dataframe
+id_55_forecast <- id_55_forecast %>%
+  mutate(stdevf = dropFirst(sqrtf))
+
+#Adding credible interval
+id_55_forecast <- id_55_forecast %>%
+  mutate(lower = forecast + qnorm(0.05, sd=stdevf),
+         upper = forecast + qnorm(0.95, sd=stdevf))
+
+
+graph_forecast_hour <- id_55_forecast %>%
+  ggplot() + 
+  aes( x = datetime,
+       y = forecast) + 
+  labs(title= "A: Forecast Hourly",
+       x= "Time") +
+  ylab("") +
+  geom_line(show.legend = FALSE) +
+  theme_minimal() +
+  geom_ribbon(aes(ymin=id_55_forecast$lower,
+                  ymax=id_55_forecast$upper),
+              linetype=2, 
+              alpha=0.3)
+
+
+```
+
+
+```{r Spec. Random Walk Noise Half-Day, echo = FALSE, eval = TRUE}
+
+buildrw <- function(parameters){
+    dlmModPoly(order=1, dV=parameters[1], dW=parameters[2], m0=id_55_half$pm25[1])}
+
+outMLE_half <- dlmMLE(id_55_half$pm25, rep(100, 2), buildrw, lower=c(0.000001, 0), hessian=TRUE)   
+
+# Estimating Standard Errors
+AsymCov <- solve(outMLE_half$hessian) 
+MLEse_half <- sqrt(diag(AsymCov))  
+
+rw <- buildrw(outMLE_half$par)
+outFilt_half <- dlmFilter(id_55_half$pm25,rw)
+
+```
+
+
+```{r Parameters Table, echo = FALSE, eval = TRUE}
+
+kable(data.frame(c(outMLE_hourly$par[1],outMLE_hourly$par[2],round(outMLE_hourly$par[2]/outMLE_hourly$par[1],3)),
+                    c(MLEse_hour[1],MLEse_hour[2],0),
+                    c(outMLE_half$par[1],outMLE_half$par[2],round(outMLE_half$par[2]/outMLE_half$par[1],3)),
+                    c(MLEse_half[1],MLEse_half[2],0),
+                row.names = c("$V$", "$W$", "$Signal-To-Noise$")), 
+      digits = 3, 
+      caption = paste("MLE Est and SE Half-Day and Hourly", round(outMLE_half$par[2]/outMLE_half$par[1],3)), 
+      col.names = c("$Value-Hourly$","$Se-Hourly$","$Value-Half$","$Se-Half$"), 
+      align = 'c')
+
+                    
+```
+
+
+Uncertainty is quantified by means of probability. Exploiting DLM properties, we retrieve respective variances both for the filtering distribution and the one-step-ahead predictive distribution of $PM_{2.5}$ station 55 data. Standard errors are used to construct 95% credible intervals (figure 5 and 6 Panel A below), as to provide a visual sense of uncertainty around our predictions. However, as figure 5 clearly points up, hourly data are extremely noisy and hard to interpret. To solve this issue we fit the local level model with half day averages of $PM_{2.5}$. Unfortunately, reducing the number of observations we see an increase both the measurement and the evolution error variances (Table 6). The idea is to sacrifice a higher precision given by hourly data to gain more interpretable results, at least graphically.  
+In any case, as reported on the bottom line of Table 6, both with hourly and half-day data the signal-to-noise ratio $W/V$ is fairly high. This implies that our forecast for pollution concentration tend to follow the new streaming in data, making new arising $PM_{2.5}$ data extremely relevant for future projections. 
+
+
+
+```{r Filtering and Std. Dev. Half-Day, echo = FALSE, eval = TRUE, out.width='60%', fig.show='hold', fig.cap='Graphs Point 1', fig.align='center'}
+
+#Adding fitted to dataframe
+id_55_half_filter <- id_55_half %>%
+  mutate(filter = dropFirst(outFilt_half$m))
+
+#This is the standard deviation
+listC <- dlmSvd2var(outFilt_half$U.C, outFilt_half$D.C)
+sqrtC <- sqrt(unlist(listC))
+
+#Adding standard dev to dataframe
+id_55_half_filter <- id_55_half_filter %>%
+  mutate(stdev = dropFirst(sqrtC))
+
+#Adding credible interval
+id_55_half_filter <- id_55_half_filter %>%
+  mutate(lower = filter + qnorm(0.05, sd=stdev),
+         upper = filter + qnorm(0.95, sd=stdev))
+
+id_55_half_filter_long <- id_55_half_filter %>%
+  pivot_longer(cols=c("pm25", "filter"), names_to = "type") %>%
+  mutate(lower = ifelse(type == "filter" , lower, NA))
+
+graph_fitted_half <- id_55_half_filter_long %>%
+  ggplot() + 
+  aes( x = date,
+       y = value,
+       color = type) + 
+  labs(title= "B: Time Series and Filtering Half-Day",
+       x= "Time") +
+  ylab("") +
+  geom_line(show.legend = TRUE) +
+  theme_minimal() +
+  geom_ribbon(aes(ymin=id_55_half_filter_long$lower,
+                  ymax=id_55_half_filter_long$upper),
+              linetype=2, 
+              alpha=0.1,
+              show.legend = FALSE)
+
+```
+
+
+```{r Forecasting Half-Day, echo = FALSE, eval = TRUE, out.width='70%', fig.show='hold', fig.align='center', fig.cap='Time Series and One-Step-Ahead Forecast'}
+
+#Adding forecast to dataframe
+id_55_half_forecast <- id_55_half[-1,] %>%
+  mutate(forecast = dropFirst(outFilt_half$f))
+
+#This is the standard deviation
+listR <- dlmSvd2var(outFilt_half$U.R, outFilt_half$D.R)
+sqrtf <- sqrt(unlist(listR)+outMLE_half$par[1])
+
+#Adding standard dev to dataframe
+id_55_half_forecast <- id_55_half_forecast %>%
+  mutate(stdevf = dropFirst(sqrtf))
+
+#Adding credible interval
+id_55_half_forecast <- id_55_half_forecast %>%
+  mutate(lower = forecast + qnorm(0.05, sd=stdevf),
+         upper = forecast + qnorm(0.95, sd=stdevf))
+
+id55_half_long_forecast <- id_55_half_forecast %>%
+  pivot_longer(cols=c("pm25", "forecast"), names_to = "type") %>%
+  mutate(lower = ifelse(type == "forecast" , lower, NA))
+
+graph_forecast_half <- id55_half_long_forecast %>%
+  ggplot() + 
+  aes( x = date,
+       y = value,
+       color = type) + 
+  labs(x= "Time", title= "B: Time Series and Forecast Half-Day") +
+  ylab("") +
+  geom_line(show.legend = TRUE) +
+  theme_minimal() +
+  geom_ribbon(aes(ymin=id55_half_long_forecast$lower,
+                  ymax=id55_half_long_forecast$upper),
+              linetype=2, 
+              alpha=0.1,
+              show.legend = FALSE)
+
+```
+
+
+\newpage
+
+
+```{r Filtering Graphs, echo=FALSE, eval = TRUE, out.width='40%', fig.show='hold',, fig.cap='Random Walk Plus Noise Filtering',fig.align='center'}
+
+graph_fitted_hour
+graph_fitted_half
+
+```
+
+```{r Forecast Graphs, echo = FALSE, eval = TRUE, out.width='40%', fig.show='hold', fig.cap='Random Walk Plus Noise Forecast',fig.align='center'}
+
+graph_forecast_hour
+graph_forecast_half
+
+```
+
+# Model Specification 3: Univariate DLM with a regression component
+
+As mentioned above, wind measurements (knots/second) appear to be a relevant explanatory variables for the behavior of our time series $(Y_{55,t})$. To take this into account, we fit a univariate DLM allowing for a regression component. In particular, we allow for the presence of two parameters $\alpha_t$ and $\beta_t$, respectively the intercept and the coefficient on the vector $x_t$ of wind levels. The model is dynamic, allowing for the intercept and the coefficient on wind to change over time. 
+
+\begin{equation*}
+\begin{array}{ccc}
+\begin{cases}
+Y_t =\alpha_t+\beta_tx_t+v_t,\quad v_t\overset{iid}{\sim}N(0,\sigma_v^2) \\
+\theta_t=G\theta_{t-1}+w_t, \quad w_t\overset{iid}{\sim}N(0, W)
+
+\end{cases}
+\end{array}
+\end{equation*}
+
+\begin{equation*} \text{with}
+\begin{array}{ccc}
+
+      
+\theta_t = (\alpha_t, \beta_t)' &
+
+W = \left[\begin{array}{cccc}
+           \sigma_\alpha^2 & 0 \\
+           0 & \sigma_\beta^2 \\
+      \end{array}\right] 
+      
+G = \left[\begin{array}{cccc}
+           1 & 0 \\
+           0 & 1 \\
+      \end{array}\right]   &    
+
+\end{array}
+\end{equation*}
+
+
+``` {r Spec. Random Walk Noise regression attempt, echo = FALSE, eval = TRUE}
+#reg1 <- lm(id_55$pm25 ~ id_55$wind + id_55$temp)
+#reg1$coefficients
+
+buildDynamicReg <-function(param)
+{dlmModReg(id_55$wind, addInt = TRUE, dV=param[1], dW=param[2:3], m0=c(51,-1.7))}
+
+outMLE_reg <- dlmMLE(id_55$pm25, rep(100, 3), buildDynamicReg, lower=c(0.000001, 0, 0), hessian=TRUE)
+
+mod_reg <- buildDynamicReg(outMLE_reg$par)
+
+AsymCov <- solve(outMLE_reg$hessian) 
+MLEse_reg <- sqrt(diag(AsymCov))  
+outFiltReg <- dlmFilter(id_55$pm25,mod_reg)
+
+kable(data.frame(c(outMLE_reg$par[1],MLEse_reg[1]),
+                 c(outMLE_reg$par[2],MLEse_reg[2]),
+                 c(outMLE_reg$par[3],MLEse_reg[3]),
+                row.names = c("$Value$","$se$")), 
+      digits = 3, 
+      caption = "Estimated Parameters", 
+      col.names = c("$\\sigma_{v}^2$","$\\sigma_{\\alpha}^2$","$\\sigma_{\\beta}^2$"),
+      align = 'c')
+
+
+```
+
+
+```{r Filtering and Std. Dev. Regression, echo = FALSE, eval = TRUE, out.width='50%', fig.show='hold', fig.cap='Regression RW One-Step Ahead Forecast', fig.align='center'}
+
+#Adding fitted to dataframe
+rw_reg_fore <- id_55[-1,] %>%
+  mutate(forecast = dropFirst(outFiltReg$f))
+
+sdev_rw_reg <- dropFirst(residuals(outFiltReg)$sd)
+
+rw_reg_forecast_long <- rw_reg_fore %>%
+  pivot_longer(cols=c("pm25", "forecast"), names_to = "type")
+
+fore <- ggplot(data=rw_reg_fore, aes(x=datetime, y=pm25))+
+  geom_line(color="black", size=0.4)+
+  geom_ribbon(aes(ymin = forecast - qnorm(0.975) * sdev_rw_reg, ymax = forecast + qnorm(0.975) * sdev_rw_reg), fill= "seashell3", alpha=0.6)+
+  geom_line(aes(x=datetime, y=forecast), size=0.4, color="orange")+
+  ylab(" ") + 
+  xlab("Date") +
+  scale_x_datetime(expand=c(0,0)) + 
+  theme_minimal()
+
+fore
+
+```
+
+From Table 7 above, we can see that the variance on the evolution error of $\alpha$ ($\sigma_\alpha^2$) is positive, while the variance for $\beta$ ($\sigma_\beta^2$) is estimated to be zero. In light of this, we can possibly infer that the impact of wind on pollution is relevant but not time-variant (constant $\beta$), thus having a zero-valued evolution error variance.$\sigma_v^2$ and $\sigma_\alpha^2$ are coherent with MLE estimated in the aforementioned local level model.
+
+
+# Model Specification 4: Multivariate Dynamic Linear Model
+
+Up until this moment, univariate models have not allowed us to take into account spatial variation to improve the predictive performance of the specification. The idea is to "borrow strength", exploiting information on particulate matters levels in geographically dispersed stations, thus introducing spacial dependence. We specify a \textit{multivariate dynamic regression model} (DLM) focusing on stations 47, 55, 92 and 95.
+
+\begin{equation*}
+\begin{array}{ccc}
+Y_t = F\theta_t + v_t, \quad v_t \overset{indep}{\sim} N_4(\textbf{0},V)  \\
+\theta_t = G\theta_t + w_t, \quad w_t \overset{indep}{\sim} N_4(\textbf{0},W) 
+\end{array}
+\end{equation*}
+
+\begin{equation*} \text{s.t.}
+\begin{array}{ccc}
+V= \left[\begin{array}{cccc}
+     \sigma_{v,1}^2 & 0 & 0  & 0 \\
+     0 & \sigma_{v,2}^2 & 0 & 0  \\
+     0 & 0 & \sigma_{v,3}^2  & 0 \\
+     0 & 0 & 0 & \sigma_{v,4}^2 \end{array} \right] &
+      
+W[j,k]=\sigma^2\exp\{-\phi \text{D}[j,k]\} &
+
+F = \left[\begin{array}{cccc}
+           1 & 0 & 0 & 0 \\
+           0 & 1 &  0&  0\\
+           0  & 0 & 1 & 0  \\
+           0 & 0 & 0 & 1
+      \end{array}\right] 
+      
+G = \left[\begin{array}{cccc}
+           1 & 0 & 0 & 0 \\
+           0 & 1 &  0&  0\\
+           0  & 0 & 1 & 0  \\
+           0 & 0 & 0 & 1
+      \end{array}\right]       
+
+\end{array}
+\end{equation*}
+
+\textbf{Model assumptions and pitfalls}: The variance-covariance of evolution errors W is computed considering D the Euclidean distance, allowing for spatial dependence across stations but assuming $V(w_{i,j}) = \sigma^2$ constant. This is a rather restrictive assumption needed to ease parameter estimation in the model. Conversely, V is a diagonal matrix contemplating heteroskedastic measurement errors. F, G, V and W are fixed. 
+
+
+```{r Spec. Multivariate Half-Day DLM, echo = FALSE, eval = TRUE}
+
+locations <- data.frame("Longitude" = unique(dataset$Longitude), "Latitude" = unique(dataset$Latitude), labels = unique(dataset$station_id))
+
+locations<- locations %>%
+  filter(labels %in% c("55","47","92","95"))
+
+D=diag(4)
+rownames(D) <- locations$labels
+colnames(D) <- locations$labels
+
+for(i in 1:4){
+  for(j in 1:4){
+  D[i,j] <- distHaversine(locations[locations$labels == rownames(D)[i],1:2], locations[locations$labels == colnames(D)[j],1:2])/1000
+}
+}
+
+buildmod <- function(param) {
+  mod_1 <- dlm(FF=diag(4), V=diag(param[1:4]), GG=diag(4), W=param[5]*exp(-param[6]*D), m0=c(0,0,0,0), C0=100000*diag(4))}
+
+multivariate_half_log <- multivariate_half %>%
+  mutate(pm25 = log(pm25))
+
+Y_log <-cbind(multivariate_half_log$pm25[multivariate_half_log$station_id==47], multivariate_half_log$pm25[multivariate_half_log$station_id==55], multivariate_half_log$pm25[multivariate_half_log$station_id==92], multivariate_half_log$pm25[multivariate_half_log$station_id==95]) 
+
+outMLE_log <- dlmMLE(Y_log, rep(0.01, 6), buildmod, lower=c(0.01, 0.01, 0.01, 0.01, 0.0000001, 0.0000001), hessian=TRUE) 
+
+DLM_multivariate_log <- buildmod(outMLE_log$par)
+
+AsymCov <- solve(outMLE_log$hessian) 
+MLEse_multi_log <- sqrt(diag(AsymCov))  
+
+
+outFilt_multi <- dlmFilter(Y_log,DLM_multivariate_log)
+
+kable(data.frame(c(outMLE_log$par[1],MLEse_multi_log[1]),
+                 c(outMLE_log$par[2],MLEse_multi_log[2]),
+                 c(outMLE_log$par[3],MLEse_multi_log[3]),
+                 c(outMLE_log$par[4],MLEse_multi_log[4]),
+                 c(outMLE_log$par[5],MLEse_multi_log[5]),
+                 c(outMLE_log$par[6],MLEse_multi_log[6]),
+                row.names = c("$Value$","$se$")), 
+      digits = 4, 
+      caption = "Estimated Parameters", 
+      col.names = c("$\\sigma_{v1}^2$","$\\sigma_{v2}^2$","$\\sigma_{v3}^2$","$\\sigma_{v4}^2$","$\\sigma^2$","$\\phi$"),
+      align = 'c')
+
+
+```
+
+Table 8 displays the maximum likelihood estimates of the unknown parameters. Applying the formula for W we can see how, effectively, the higher the distance between two stations, the smaller their covariance $COV(w_j,w_k)$ for $j \neq k\; \in \{47,55,92,95\}$
+
+We plot both the filtering estimates for the vector $\theta_t=(\theta_{1t},\theta_{2t},\theta_{3t},\theta_{4t})'$ as well as the one-step-ahead forecast for $PM_{2.5}$ levels in the four localities analyzed. Given that we have chosen four stations quite uniformly distributed on the territory (matrix D), no station reflects significantly bigger credible intervals. This would reflect the impact of a higher distance form the other stations and consequently lower explanatory power linked to lack of proximity.
+In fact, from a visual inspection of the graphs below, uncertainty seems to be smaller, suggesting a well functioning of the "borrowing strength" mechanism. However, given the different model specifications in the multivariate and univariate case (here using the log and half day measurements) results are not directly comparable. 
+
+``````{r Multivariate Graphs, echo = FALSE, eval = TRUE}
+
+#states
+multi_data_m <- multivariate_half_log
+multi_data_m$m <- c(dropFirst(outFilt_multi$m[,1]), dropFirst(outFilt_multi$m[,2]), dropFirst(outFilt_multi$m[,3]), dropFirst(outFilt_multi$m[,4]))
+
+#forecasts
+multi_data_f <- multivariate_half_log %>%
+  mutate(first_obs= ifelse(first_half == 1 & date=="2020-06-01", 1, 0)) %>%
+  filter(first_obs == 0 )
+
+multi_data_f$f <- c(dropFirst(outFilt_multi$f[,1]), dropFirst(outFilt_multi$f[,2]), dropFirst(outFilt_multi$f[,3]), dropFirst(outFilt_multi$f[,4]))
+
+sdev <- residuals(outFilt_multi)$sd
+
+multi_data_f$sdev <- c(dropFirst(sdev[,1]), dropFirst(sdev[,2]), dropFirst(sdev[,3]), dropFirst(sdev[,4]))
+
+#graph filtering estimates
+est<- ggplot(data=multi_data_m, aes(x=datetime, y=pm25))+
+  geom_line(color="black", size=0.4)+
+  facet_wrap(~ station_id, ncol=2)+
+    geom_line(aes(x=datetime, y=m, group = 1), color="orange", size=0.4, alpha=0.8)+
+  ggtitle("A: Filtering estimates and actual data")+
+  xlab("Date")+
+  scale_x_datetime(expand=c(0,0)) + 
+  theme_minimal()
+
+#graph forecasts with credible intervals
+fore <- ggplot(data=multi_data_f, aes(x=datetime, y=pm25))+
+  geom_line(color="black", size=0.4)+
+  facet_wrap(~ station_id, ncol=2)+
+  geom_ribbon(aes(ymin = f - qnorm(0.975) * sdev, ymax = f + qnorm(0.975) * sdev), fill= "seashell3", alpha=0.6)+
+  geom_line(aes(x=datetime, y=f), size=0.4, color="orange")+
+  ggtitle("B: Forecasting estimates and actual data")+
+  ylab(" ") + 
+  xlab("Date") +
+  scale_x_datetime(expand=c(0,0)) + 
+  theme_minimal()
+
+
+```   
+
+
+
+```{r graph_forecasts, echo = FALSE, eval = TRUE, out.width='50%', fig.show='hold',fig.align='center', fig.cap='Station Specific Filtering and Forecasing Estimates'}
+
+est
+fore
+
+```
+
+
+# Model checking 
+
+To conclude, we perform a diagnostic check on the innovation errors ($e_t=Y_t-f_t$,$f_t=E[Y_t|\theta_{1:t-1}]$}) of our specifications to analyze the predictive accuracy of our models. For a univariate time series,if the model is correctly specified, the sequence of standardized forecast errors $\tilde{e}$ retrieved from the model should look like a Gaussian white noise. Here we plot the theoretical quantiles on the x-axis and the sample ones on the y-axis. From the first Q-Q plot built (Figure 9) on the local level model we can conclude that our standardized forecast errors are not exactly normal. In fact, we have a fat-tailed Q-Q plot, with both extremities deviating from the straight line. This suggest the presence of kurtosis.
+
+Looking at station-specific Q-Q plot extracted from the multivariate DLM (Figure 10) we see an improvement, even though not for every station. The majority of them, in fact, still displays tails deviating from the straight line.
+
+From these evidence we can conclude that, although there is an improvement, our multivariate model could still be enhanced. 
+
+
+```{r QQ Plots Multi Codes, echo = FALSE, eval = TRUE}
+
+#Multivariate
+et<-residuals(outFilt_multi, sd=FALSE) #estimating e_t
+
+#qqplot for station 47
+qqplot47 <- ggplot() + 
+  stat_qq_line(aes(sample = et[,1]), colour = "black")+
+    stat_qq(aes(sample = et[,1]), colour = "orange", shape=1)+
+  theme_minimal() +
+  ggtitle("A: Normal Q-Q Plot - Station 47")+
+  labs(y="Sample quantiles", 
+       x="Theoretical quantiles")
+
+#qqplot for station 55
+qqplot55 <- ggplot() + 
+  stat_qq_line(aes(sample = et[,1]), colour = "black")+
+  stat_qq(aes(sample = et[,2]), colour = "red" , shape=1) +
+  theme_minimal() +
+  ggtitle("B: Normal Q-Q Plot - Station 55")+
+  labs(y="Sample quantiles", 
+       x="Theoretical quantiles")
+
+#qqplot for station 92
+qqplot92 <- ggplot() + 
+  stat_qq_line(aes(sample = et[,1]), colour = "black")+
+  stat_qq(aes(sample = et[,3]), colour = "blue" , shape=1) +
+  theme_minimal() +
+  ggtitle("C: Normal Q-Q Plot - Station 92")+
+  labs(y="Sample quantiles", 
+       x="Theoretical quantiles")
+
+#qqplot for station 95
+qqplot95 <- ggplot() +
+  stat_qq_line(aes(sample = et[,1]), colour = "black")+
+  stat_qq(aes(sample = et[,4]), colour = "green", shape=1) +
+  theme_minimal() +
+  ggtitle("D: Normal Q-Q Plot - Station 95")+
+  labs(y="Sample quantiles", 
+       x="Theoretical quantiles")
+
+
+```
+
+```{r QQ Plots Uni Graphs, fig.align='center', out.width='40%', fig.cap="QQ-Plot Random Walk Plus Noise", echo = FALSE, eval = TRUE, , fig.show='hold'}
+
+#Random Walk Plus Noise
+qqnorm(residuals(outFilt, sd=FALSE))
+qqline(residuals(outFilt, sd=FALSE))
+
+```
+
+```{r QQ Plots Multi Graphs, echo = FALSE, eval = TRUE, out.width='35%', fig.show='hold',fig.align='center', fig.cap='QQ-Plots Multivariate'}
+
+
+qqplot47
+qqplot55
+qqplot92
+qqplot95
+
+```
+
+# Final remarks and future research suggestions
+
+In the above project we have specified four different alternative models to describe the data generating process of our $PM_{2.5}$ time series $(Y_t)_{t\geq1}$. We notice that, even taking into account 4 different stations in a multivariate DLM, the model performance improves, but not significantly. One suggestion for future research, in fact, may be to better address spatial dependence choosing closer and more correlated stations. Finally, we have included only the wind measurements, given he higher correlation, as explanatory variable in model specification 3. One could think of extending the model including alternative/complementary "regressors", potentially going beyond the temperature level in the dataset.

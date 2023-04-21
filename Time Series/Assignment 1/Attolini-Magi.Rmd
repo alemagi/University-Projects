@@ -1,0 +1,571 @@
+---
+title: "Assignment 1 - Time Series"
+author: "Attolini Maria Carmela, Magi Alessandro"
+date: 
+header-includes:
+output: pdf_document
+
+
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = TRUE,
+	message = FALSE,
+	warning = FALSE,
+	cache = TRUE,
+	include = TRUE
+	
+)
+```
+
+```{r Libraries, echo = FALSE}
+library(tidyverse)
+library(readxl)
+library(janitor)
+library(stringr)
+library(knitr)
+library(zoo)
+library(tinytex)
+library(xts)
+```
+
+
+# Exercise 1
+
+Consider the time series co2, monthly observations of atmospheric concentrations of co2 at Mauna Loa, from
+1959 to 1997; this series is available in R.
+
+
+```{r Upload Dataset CO2, echo = FALSE, eval = TRUE}
+
+tsco2 <- co2
+
+dfco2 <- data.frame(co2=as.matrix(tsco2), time=as.Date(as.yearmon(time(tsco2))))
+
+dfco2_ym <- data.frame(co2 = as.matrix(co2), date=time(tsco2))
+
+dfco2_ym <- dfco2_ym %>%
+  mutate(year= trunc(date), month=(date-year)*12+1) %>%
+  select(year, month, co2)
+
+dfco2_ym <- dfco2_ym[1:12,]
+
+```
+
+```{r Table CO2, echo = FALSE, eval = FALSE}
+
+kable(dfco2_ym,
+      digits = 2,
+      caption = "Co2 Level Over Years",
+      col.names = c("Year", "Month", "Co2"),
+      align = 'c')
+
+```
+
+
+```{r Graph CO2 Time Series, echo = FALSE, eval = TRUE, fig.show='hold', out.width='50%', fig.cap='Co2 Graphs'}
+
+co2_graph <- dfco2 %>%
+  ggplot() + 
+  aes(y=co2,
+      x=time) + 
+  labs(x = "Time",
+       y = "Level of Co2",
+       title = "A: Level of Co2 Over Time") +
+  geom_line() +
+  theme(panel.background = element_rect(fill = 'white', colour = 'black'))
+
+deco2 <- decompose(co2)
+deco2df <- dfco2 %>%
+  mutate(observed= deco2$x, 
+         seasonal= deco2$seasonal, 
+         trend= deco2$trend, 
+         random = deco2$random)
+
+deco2df_long <- deco2df %>%
+  select(time, observed, seasonal, trend, random) %>%
+  pivot_longer(cols=c("observed", "seasonal", "trend", "random"), names_to = "type")
+
+graphdeco2 <- deco2df_long %>%
+  ggplot() + 
+  aes( x = time,
+       y = value,
+       color = type) + 
+  labs(title = "B: Decomposition of CO2",
+       x= "Time",
+       x= "Time") +
+  ylab("") +
+  geom_line(show.legend = FALSE) +
+  facet_wrap(~ type, ncol = 1, scale="free_y")
+
+co2_graph
+graphdeco2
+
+```
+
+From the above graphs we can see how the time series can be decomposed in an additive model, showing a trend and  a seasonality. 
+
+\newpage
+
+# Exercise 2
+
+Consider another classical data set, UKgas, available in R. This time series provides the quarterly UK gas
+consumption from the first quarter of 1960 to the forth quarter of 1986, in millions of therms.
+
+
+```{r Importing Gas DataFrame, echo = FALSE, eval = TRUE}
+
+gas <- UKgas
+gasdf <- data.frame(gas=as.matrix(UKgas), time=as.yearqtr(time(UKgas)))
+
+```
+
+```{r Alternativa che non printo, echo = FALSE, eval = FALSE}
+
+gasdf <- data.frame(gas = as.matrix(gas), date=time(gas))
+gasdf <- gasdf %>%
+  mutate(year= trunc(date), quarter=(date-year)*4+1) %>%
+  mutate(ym = paste(year, "-", quarter))
+
+```
+
+
+```{r Graph Level of Gas, echo = FALSE, eval = TRUE, fig.align='center', out.width='40%', fig.cap='Level of Gas Cons'}
+
+ukgraph <- gasdf %>%
+  ggplot() +
+  aes(x=time,
+      y=gas) +
+  labs(x= "Time",
+       y= "Gas Consumption") + 
+  geom_line() + 
+  theme(panel.background = element_rect(fill = 'white', colour = 'black'))
+
+
+ukgraph
+
+```
+
+
+```{r Decompositions of Gas Level, echo = FALSE, eval = TRUE}
+
+#First Decomposition
+gasdec <- decompose(gas, type = "additive")
+gasdecdf <- gasdf %>%
+  mutate(observed= gasdec$x, 
+         seasonal= gasdec$seasonal, 
+         trend= gasdec$trend, 
+         random = gasdec$random)
+
+gasdecdf_long <- gasdecdf %>%
+  select(time, observed, seasonal, trend, random) %>%
+  pivot_longer(cols=c("observed", "seasonal", "trend", "random"), names_to = "type")
+
+#Second Decomposition
+gasdecm <- decompose(gas, type = "multiplicative")
+gasdecmdf <- gasdf %>%
+  mutate(observed= gasdecm$x, 
+         seasonal= gasdecm$seasonal, 
+         trend= gasdecm$trend, 
+         random = gasdecm$random)
+
+gasdecmdf_long <- gasdecmdf %>%
+  select(time, observed, seasonal, trend, random) %>%
+  pivot_longer(cols=c("observed", "seasonal", "trend", "random"), names_to = "type")
+
+#Third Decomposition
+gaslogdec <- decompose(log(gas), type = "additive")
+gaslogdecdf <- gasdf %>%
+  mutate(observed= gaslogdec$x, 
+         seasonal= gaslogdec$seasonal, 
+         trend= gaslogdec$trend, 
+         random = gaslogdec$random)
+
+gaslogdecdf_long <- gaslogdecdf %>%
+  select(time, observed, seasonal, trend, random) %>%
+  pivot_longer(cols=c("observed", "seasonal", "trend", "random"), names_to = "type")
+
+
+
+```
+
+
+```{r Def Graphs of Gas Decompositions, echo = FALSE, eval = TRUE}
+
+#First Graph
+graph_gasdecdf <- gasdecdf_long %>%
+  ggplot() + 
+  aes( x = time,
+       y = value,
+       color = type) + 
+  labs(title= "A: Additive Decomposition",
+       x= "Time") +
+  ylab("") +
+  geom_line(show.legend = FALSE) +
+  facet_wrap(~ type, ncol = 1, scale="free_y")
+
+#Second Graph
+graph_gasdecmdf <- gasdecmdf_long %>%
+  ggplot() + 
+  aes( x = time,
+       y = value,
+       color = type) + 
+  labs(title= "B: Multiplicative Decomposition",
+       x= "Time") +
+  ylab("") +
+  geom_line(show.legend = FALSE) +
+  facet_wrap(~ type, ncol = 1, scale="free_y")
+
+#Third Graph
+graph_gaslogdecdf <- gaslogdecdf_long %>%
+  ggplot() + 
+  aes( x = time,
+       y = value,
+       color = type) + 
+  labs(title= "C: Log Decomposition",
+       x= "Time") +
+  ylab("") +
+  geom_line(show.legend = FALSE) +
+  facet_wrap(~ type, ncol = 1, scale="free_y")
+
+
+
+
+```
+
+## Comments:
+
+### Point 1
+
+From the plot of the original time series [Figure 2] we can see that a multiplicative decomposition appears more reasonable. At the same time we can still plot the same data through the log. 
+The results are not satisfying given that we cannot see changes in the behavior in the seasonality component which instead should change according to the first plot [Figure2]. We should relax the assumption of a constant seasonal factor, which is assumed in a classical time series decomposition. Furthermore, the error term is not completely random. 
+
+```{r Holt Winters Dec, echo = FALSE, eval = TRUE}
+
+gasHW <- HoltWinters(gas)
+gasHWfit<- fitted(gasHW)
+gasHWdf <- data.frame(as.matrix(gasHWfit), time=as.yearqtr(time(gasHWfit)))
+
+gasHWdf_long <- gasHWdf %>%
+  select(time, xhat, level, trend, season) %>%
+  pivot_longer(cols=c("xhat", "level", "trend", "season"), names_to = "type")
+
+```
+
+```{r Graph Holt Winters, echo = FALSE, eval = TRUE}
+
+graph_gasHWdf_long <- gasHWdf_long %>%
+  ggplot() + 
+  aes( x = time,
+       y = value,
+       color = type) + 
+  labs(title= "D: Holt Winters",
+       x= "Time") +
+  ylab("") +
+  geom_line(show.legend = FALSE) +
+  facet_wrap(~ type, ncol = 1, scale="free_y")
+
+```
+
+
+```{r Graphs Decompositions, echo = FALSE, eval = TRUE, out.width='50%', fig.show='hold', fig.cap='Gas Decompositions'}
+
+graph_gasdecdf
+graph_gasdecmdf
+graph_gaslogdecdf
+graph_gasHWdf_long
+
+```
+
+### Point 2
+
+Through the Holt-Winters exponential smoothing we can see in the "season" section of the graph a time varying seasonal factor and an increasing trend. This would justify a multiplicative model.
+
+\newpage
+
+# Exercise 3
+
+The dataset Nile, available in R, provides the measurements of the annual flow of the river Nile at Ashwan,
+for the period 1871-1970.
+
+## Comments
+
+### Point 1 and Point 2
+
+```{r Nile Dataset and Plot, echo = FALSE, eval = TRUE}
+
+niledf <- data.frame(nile=as.matrix(Nile), year=time(Nile))
+
+nile_graph <- niledf %>%
+  ggplot() + 
+  aes(y=nile,
+      x=year) + 
+  labs(x = "Time",
+       y = "Level of Nile",
+       title = "A: Level of the Nile Over Time") +
+  geom_line() +
+  theme(panel.background = element_rect(fill = 'white', colour = 'black'))
+
+
+```
+
+
+```{r Default Alpha Value, echo = FALSE, eval = TRUE}
+
+nileHW <- HoltWinters(Nile, beta=F,gamma=F)
+nileHWfit <- fitted(nileHW)
+nileHWfitdf <- data.frame(as.matrix(nileHWfit), year=time(nileHWfit))
+
+nileHWfitdf_long <- nileHWfitdf %>%
+  select(year, xhat, level) %>%
+  pivot_longer(cols=c("xhat", "level"), names_to = "type")
+
+graph_nileHWfitdf_long <- nileHWfitdf_long %>%
+  ggplot() + 
+  aes( x = year,
+       y = value,
+       color = type) + 
+  labs(title="B: Default Alpha Value",
+       x= "Time",
+       x= "Time") +
+  ylab("") +
+  geom_line(show.legend = FALSE) +
+  facet_wrap(~ type, ncol = 1, scale="free_y")
+
+#predict(nileHW, n.ahead = 1)
+
+```
+
+```{r Aplha Value 0.1, echo = FALSE, eval = TRUE}
+
+nileHW1 <- HoltWinters(Nile, alpha=0.1, beta=F, gamma=F)
+nileHWfit1 <- fitted(nileHW1)
+nileHWfitdf1 <- data.frame(as.matrix(nileHWfit1), year=time(nileHWfit1))
+
+nileHWfitdf1_long <- nileHWfitdf1 %>%
+  select(year, xhat, level) %>%
+  pivot_longer(cols=c("xhat", "level"), names_to = "type")
+
+graph_nileHWfitdf1_long <- nileHWfitdf1_long %>%
+  ggplot() + 
+  aes( x = year,
+       y = value,
+       color = type) + 
+  labs(title="C: Alpha Value 0.1",
+       x= "Time",
+       x= "Time") +
+  ylab("") +
+  geom_line(show.legend = FALSE) +
+  facet_wrap(~ type, ncol = 1, scale="free_y")
+
+
+#predict(nileHW1, n.ahead = 1)
+
+```
+
+```{r Aplha Value 0.9, echo = FALSE, eval = TRUE}
+
+nileHW2 <- HoltWinters(Nile, alpha=0.9, beta=F, gamma=F)
+nileHWfit2 <- fitted(nileHW2)
+nileHWfitdf2 <- data.frame(as.matrix(nileHWfit2), year=time(nileHWfit2))
+
+nileHWfitdf2_long <- nileHWfitdf2 %>%
+  select(year, xhat, level) %>%
+  pivot_longer(cols=c("xhat", "level"), names_to = "type")
+
+graph_nileHWfitdf2_long <- nileHWfitdf2_long %>%
+  ggplot() + 
+  aes( x = year,
+       y = value,
+       color = type) + 
+  labs(title="D: Alpha Value 0.9",
+       x= "Time",
+       x= "Time") +
+  ylab("") +
+  geom_line(show.legend = FALSE) +
+  facet_wrap(~ type, ncol = 1, scale="free_y")
+
+
+#predict(nileHW2, n.ahead = 1)
+
+```
+
+```{r Graphs of Nile Decompositions, echo = FALSE, eval = TRUE, fig.show='hold', out.width='50%', fig.cap='Nile Decompositions'}
+
+nile_graph
+graph_nileHWfitdf_long
+graph_nileHWfitdf1_long
+graph_nileHWfitdf2_long
+
+
+
+```
+
+```{r Table with Alpha Values, echo = FALSE, eval = TRUE}
+
+Alpha_Values <- c(0.25, 0.1, 0.9)
+Predicted_Values <- c(predict(nileHW, n.ahead = 1), predict(nileHW1, n.ahead = 1), predict(nileHW2, n.ahead = 1))
+
+alphavalues <- data.frame(Alpha_Values, Predicted_Values)
+
+kable(alphavalues,
+      digits = 2,
+      caption = "Alpha Values and Predicted",
+      col.names = c("Alpha Values", "Predicted Values"),
+      align = 'c')
+
+
+```
+
+
+Alpha is defined as the smoothing parameter. Not considering a potential trend or seasonality, when alpha = 0.1 (approximately equal to 0) our forecast for the future will be almost equal to the prediction done in the period before. On the contrary, when alpha = 0.9 (approximately equal to 1) our forecast for the future will rely very much on the new obstervation yt.
+
+\newpage
+
+### Point 3
+
+```{r MAPE, echo = FALSE, eval = TRUE}
+
+mape = function(y, yhat){mean(abs(y - yhat)/y) }
+
+mape1 = mape(Nile[2:100],nileHWfitdf$xhat)
+mape2 = mape(Nile[2:100],nileHWfitdf1$xhat)
+mape3 = mape(Nile[2:100],nileHWfitdf2$xhat)
+
+Alpha_Values_MP <- c(0.25, 0.1, 0.9)
+Mape_Values <- c(mape1, mape2, mape3)
+
+mapevalues <- data.frame(Alpha_Values_MP, Mape_Values)
+
+kable(mapevalues,
+      digits = 4,
+      caption = "Alpha Values and correspondig MAPE",
+      col.names = c("Alpha Values", "MAPE Values"),
+      align = 'c')
+
+```
+
+As we can see from the mean average percentage errors computed with the different values of alpha, we can see that the minimum value corresponds to the alpha estimated by the funcion. This confirms the fact that that is the optimal value of alpha. 
+
+\newpage
+
+# Exercise 4
+
+With the horrible pandemic, we also ‘touch’ the relevance of good data and forecasts as support of decisions
+under uncertainty..
+I provide on BBoard a dataset of daily data on the evolution of the covid epidemic in Italy, since February
+20, 2020.
+As part of the assignment, you should import the data in RStudio and make meaningful plots.
+
+```{r set Local, echo = FALSE, eval = TRUE, include= FALSE}
+
+covid <- read.table(file = "C:\\Users\\magia\\OneDrive - Università Commerciale Luigi Bocconi\\AA Second Semester\\Time Series\\Time Series Magi-Attolini\\Assignment 1\\covid.txt",
+                    sep = "",
+                    header = TRUE,
+                    fill = TRUE)
+
+
+inds <- seq(as.Date("2020-02-20"), as.Date("2021-02-11"), by = "day")
+covid <- covid %>%
+  mutate(date = inds)
+
+covidts <- ts(covid$contagion, frequency = 30)
+plot(decompose(covidts, type = "multiplicative"))
+
+graph_contagion <- covid %>%
+  ggplot() + 
+  aes(y=contagion,
+      x=date) + 
+  labs(x = "Date",
+       y = "Contagion",
+       title = "A: Number of Contagions") +
+  geom_line() +
+  theme(panel.background = element_rect(fill = 'white', colour = 'black'))
+
+graph_deaths <- covid %>%
+  ggplot() + 
+  aes(y=deaths,
+      x=date) + 
+  labs(x = "Date",
+       y = "Deaths",
+       title = "B: Number of Deaths") +
+  geom_line() +
+  theme(panel.background = element_rect(fill = 'white', colour = 'black'))
+
+graph_intesiveCare <- covid %>%
+  ggplot() + 
+  aes(y=intesiveCare,
+      x=date) + 
+  labs(x = "Date",
+       y = "intesiveCare",
+       title = "C: Number of Intensive Care") +
+  geom_line() +
+  theme(panel.background = element_rect(fill = 'white', colour = 'black'))
+
+graph_tests <- covid %>%
+  ggplot() + 
+  aes(y=intesiveCare,
+      x=date) + 
+  labs(x = "Date",
+       y = "TestsTamponi",
+       title = "D: Number of Swab Tests") +
+  geom_line() +
+  theme(panel.background = element_rect(fill = 'white', colour = 'black'))
+
+
+
+```
+
+```{r Alternative not to print, echo = FALSE, eval = FALSE}
+
+Sys.setlocale("LC_TIME", "Italian")
+covid <- covid %>%
+  mutate(n = 1:nrow(covid), 
+         year= ifelse(n<=316, "2020", "2021"), 
+         dmy = paste(day,year,sep = "-"), 
+         date = as.Date(dmy, format = "%d-%b-%Y")) %>%
+  select("date", "contagion", "deaths", "intesiveCare", "TestsTamponi")
+
+```
+
+
+
+```{r Covid Data and Graphs, echo = FALSE, eval = TRUE, fig.show='hold', out.width='50%', fig.cap='Covid Variables'}
+
+graph_contagion
+graph_deaths
+graph_intesiveCare
+graph_tests
+
+```
+
+
+
+
+
+```{r Wrap Graph, echo = FALSE, eval = FALSE, out.width='100%', fig.cap='Covid Variables Wrap', fig.align='center'}
+
+covid_long <- covid %>%
+  pivot_longer(cols=c("contagion", "deaths", "intesiveCare", "TestsTamponi"), names_to = "type")
+
+graph_covid_long <- covid_long %>%
+  ggplot() + 
+  aes( x = date,
+       y = value,
+       color = type) +
+  geom_line(show.legend = FALSE) +
+  facet_wrap(~ type, ncol = 1, scale="free_y")
+
+graph_covid_long
+
+```
+
+
+
+
+
+
+
+
+
